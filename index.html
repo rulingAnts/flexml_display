@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XML Category Tree Viewer</title>
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    margin: 2rem;
+    line-height: 1.5;
+  }
+  textarea {
+    width: 100%;
+    height: 200px;
+    font-family: monospace;
+  }
+  button {
+    margin-top: 1rem;
+    padding: 0.6rem 1rem;
+    border: none;
+    background: #0078d7;
+    color: white;
+    border-radius: 0.4rem;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #005ea2;
+  }
+</style>
+</head>
+<body>
+
+<h1>XML Category Tree Viewer</h1>
+<p>Paste or upload an XML file, then click “Transform”.</p>
+
+<form id="xmlForm">
+  <textarea id="xmlInput" placeholder="Paste XML here..."></textarea><br>
+  <input type="file" id="xmlFile" accept=".xml"><br>
+  <button type="submit">Transform</button>
+</form>
+
+<script>
+document.getElementById('xmlFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    document.getElementById('xmlInput').value = evt.target.result;
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('xmlForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const xmlText = document.getElementById('xmlInput').value.trim();
+  if (!xmlText) {
+    alert("Please paste or upload an XML document first.");
+    return;
+  }
+
+  try {
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlText, "application/xml");
+    if (xmlDoc.querySelector("parsererror")) {
+      throw new Error(xmlDoc.querySelector("parsererror").textContent);
+    }
+
+    const root = xmlDoc.documentElement;
+    const ulTree = buildCategoryList(root);
+
+    const resultDoc = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>XML Tree</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 1rem; line-height: 1.5; }
+  ul { list-style-type: none; margin-left: 1em; padding-left: 1em; border-left: 1px dotted #aaa; }
+  li { margin: 0.2em 0; }
+  .toggle { cursor: pointer; color: #0078d7; margin-right: 4px; user-select: none; }
+  .collapsed > ul { display: none; }
+  .abbr { color: #666; margin-left: 0.5em; font-size: 0.9em; }
+  button { padding: 0.5rem 0.8rem; margin-bottom: 1rem; background: #0078d7; color: white; border: none; border-radius: 0.4rem; }
+</style>
+</head>
+<body>
+<button id="saveBtn">Save as HTML</button>
+${ulTree.outerHTML}
+
+<script>
+document.querySelectorAll('.toggle').forEach(t => {
+  t.addEventListener('click', () => {
+    t.parentElement.classList.toggle('collapsed');
+    t.textContent = t.textContent === '▾' ? '▸' : '▾';
+  });
+});
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  const blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'xml_tree.html';
+  a.click();
+});
+<\/script>
+</body></html>
+`;
+
+    const newWindow = window.open();
+    newWindow.document.write(resultDoc);
+    newWindow.document.close();
+
+  } catch (err) {
+    alert("Error parsing XML: " + err.message);
+  }
+});
+
+function buildCategoryList(node) {
+  const ul = document.createElement('ul');
+
+  if (node.nodeName === 'item' || node.nodeName === 'list') {
+    const li = document.createElement('li');
+
+    const toggle = document.createElement('span');
+    toggle.textContent = '▾';
+    toggle.classList.add('toggle');
+
+    const name = node.querySelector(':scope > name');
+    const abbr = node.querySelector(':scope > abbr');
+
+    const label = document.createElement('span');
+    label.textContent = name ? name.textContent : node.nodeName;
+
+    li.appendChild(toggle);
+    li.appendChild(label);
+
+    if (abbr) {
+      const abbrSpan = document.createElement('span');
+      abbrSpan.classList.add('abbr');
+      abbrSpan.textContent = '(' + abbr.textContent + ')';
+      li.appendChild(abbrSpan);
+    }
+
+    const children = Array.from(node.children).filter(c => c.nodeName === 'item');
+    if (children.length > 0) {
+      const childUL = document.createElement('ul');
+      children.forEach(child => {
+        childUL.appendChild(buildCategoryList(child));
+      });
+      li.appendChild(childUL);
+    }
+
+    ul.appendChild(li);
+  } else {
+    // generic fallback for unexpected elements
+    const li = document.createElement('li');
+    li.textContent = node.textContent.trim();
+    ul.appendChild(li);
+  }
+
+  return ul;
+}
+</script>
+
+</body>
+</html>
