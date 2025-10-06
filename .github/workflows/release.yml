@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:  # allow manual runs
+permissions:
+  contents: write     # needed to create/upload Releases
 
 jobs:
   win:
