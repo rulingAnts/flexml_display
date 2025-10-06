@@ -1,168 +1,688 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>XML Category Tree Viewer</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>FLEx XML Viewer — Lists & Phonology</title>
 <style>
-  body {
-    font-family: system-ui, sans-serif;
-    margin: 2rem;
-    line-height: 1.5;
+  :root{
+    --accent:#0b6edb;
+    --muted:#6c6c6c;
+    --bg:#fbfbfb;
+    --card:#fff;
+    --border:#e2e2e2;
+    --highlight: #fff2b8;
   }
-  textarea {
-    width: 100%;
-    height: 200px;
-    font-family: monospace;
-  }
-  button {
-    margin-top: 1rem;
-    padding: 0.6rem 1rem;
-    border: none;
-    background: #0078d7;
-    color: white;
-    border-radius: 0.4rem;
-    cursor: pointer;
-  }
-  button:hover {
-    background: #005ea2;
-  }
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; margin:18px; background:var(--bg); color:#111}
+  header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  h1{font-size:1.1rem;margin:0}
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  textarea{width:720px;max-width:100%;height:220px;font-family:monospace;padding:8px;border:1px solid var(--border);border-radius:6px;background:linear-gradient(#fff,#fcfcfc)}
+  input[type=file]{padding:6px}
+  button{background:var(--accent);color:white;border:none;padding:8px 10px;border-radius:6px;cursor:pointer}
+  button.secondary{background:#ddd;color:#111}
+  label.small{font-size:0.9rem;color:var(--muted)}
+  .viewer{margin-top:18px;background:var(--card);border:1px solid var(--border);padding:14px;border-radius:8px;box-shadow:0 1px 0 rgba(0,0,0,0.03)}
+  .controls-row{display:flex;gap:12px;align-items:center;margin-top:8px}
+  .section-title{font-weight:600;margin:8px 0;font-size:1rem}
+  ul.tree{list-style:none;margin:6px 0 6px 14px;padding-left:10px;border-left:1px dotted #ddd}
+  ul.tree li{margin:4px 0;position:relative;padding-left:6px}
+  .toggle{user-select:none;cursor:pointer;margin-right:6px;color:var(--accent)}
+  .collapsed > ul{display:none}
+  .label{font-weight:600;margin-right:6px}
+  .muted{color:var(--muted);font-size:0.95rem}
+  table.phonemes{width:100%;border-collapse:collapse;margin-top:8px}
+  table.phonemes th, table.phonemes td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+  table.phonemes tr:nth-child(odd){background:transparent}
+  tr.highlight{background:var(--highlight) !important}
+  .natclass{border:1px solid var(--border);padding:8px;border-radius:6px;margin-bottom:10px;background:linear-gradient(#fff,#f9f9f9)}
+  .natclass .members{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
+  .symbol-pill{background:#f1f8ff;border:1px solid #d6eaff;padding:3px 7px;border-radius:6px;cursor:pointer}
+  .symbol-pill:hover{background:#e8f2ff}
+  .backlink{font-size:0.85rem;color:var(--accent);cursor:pointer;margin-left:8px}
+  .small-muted{font-size:0.9rem;color:var(--muted)}
+  .meta{font-size:0.9rem;color:var(--muted);margin-bottom:12px}
+  .searchbar{margin-left:8px}
+  .code{font-family:monospace;background:#fff;border:1px solid #eee;padding:2px 6px;border-radius:4px;font-size:0.95rem}
+  .foot{margin-top:12px;font-size:0.9rem;color:var(--muted)}
+  /* highlight for scroll target */
+  .scroll-target{outline:3px solid rgba(11,110,219,0.12);border-radius:4px}
 </style>
 </head>
 <body>
+<header>
+  <h1>FLEx XML Viewer — Lists & Phonology</h1>
+  <div class="controls">
+    <label class="small">Paste XML</label>
+    <input id="fileInput" type="file" accept=".xml,.xml.txt" />
+  </div>
+</header>
 
-<h1>XML Category Tree Viewer</h1>
-<p>Paste or upload an XML file, then click “Transform”.</p>
+<textarea id="xmlInput" placeholder="Paste XML here or choose a file..."></textarea>
 
-<form id="xmlForm">
-  <textarea id="xmlInput" placeholder="Paste XML here..."></textarea><br>
-  <input type="file" id="xmlFile" accept=".xml"><br>
-  <button type="submit">Transform</button>
-</form>
+<div class="controls-row">
+  <button id="transformBtn">Transform</button>
+  <button id="resetBtn" class="secondary">Reset</button>
+  <label class="small" style="display:flex;align-items:center;gap:8px">
+    <input id="showNames" type="checkbox"> Show element names (e.g., <span class="code">Name:</span>)
+  </label>
+  <button id="openBtn" class="secondary">Open in new window</button>
+  <button id="saveBtn" class="secondary">Save as HTML</button>
+  <span class="searchbar small-muted">Mode: <span id="modeLabel">—</span></span>
+</div>
+
+<div id="viewer" class="viewer" aria-live="polite">
+  <div class="meta small-muted">Paste or upload an XML file, then click Transform. The viewer auto-detects List / Phonology / Generic modes.</div>
+  <div id="renderArea"></div>
+</div>
 
 <script>
-document.getElementById('xmlFile').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (evt) => {
-    document.getElementById('xmlInput').value = evt.target.result;
-  };
-  reader.readAsText(file);
+/* ======= Helpers ======= */
+const byId = id => document.getElementById(id);
+const escapeHtml = s => String(s||'').replace(/[&<>"]/g, c=>'&' + ({'&':'amp','<':'lt','>':'gt','"':'quot'})[c] + ';');
+function create(tag, attrs={}, text){
+  const el = document.createElement(tag);
+  for(const k in attrs){
+    if(k==='cls') el.className = attrs[k];
+    else if(k==='html') el.innerHTML = attrs[k];
+    else el.setAttribute(k, attrs[k]);
+  }
+  if(text) el.textContent = text;
+  return el;
+}
+
+/* ======= File load handling ======= */
+byId('fileInput').addEventListener('change', async e=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const text = await f.text();
+  byId('xmlInput').value = text;
 });
 
-document.getElementById('xmlForm').addEventListener('submit', function(e) {
-  e.preventDefault();
-  const xmlText = document.getElementById('xmlInput').value.trim();
-  if (!xmlText) {
-    alert("Please paste or upload an XML document first.");
-    return;
-  }
+/* ======= Main controls ======= */
+byId('resetBtn').addEventListener('click', ()=>{
+  byId('xmlInput').value = '';
+  byId('renderArea').innerHTML = '<div class="meta small-muted">Paste or upload an XML file, then click Transform.</div>';
+  byId('modeLabel').textContent = '—';
+});
 
+byId('transformBtn').addEventListener('click', ()=> {
+  const xmlText = byId('xmlInput').value.trim();
+  if(!xmlText){ alert('Please paste or upload an XML document first.'); return; }
   try {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlText, "application/xml");
-    if (xmlDoc.querySelector("parsererror")) {
-      throw new Error(xmlDoc.querySelector("parsererror").textContent);
+    const p = new DOMParser();
+    const xmlDoc = p.parseFromString(xmlText, 'application/xml');
+    if(xmlDoc.querySelector('parsererror')) {
+      const msg = xmlDoc.querySelector('parsererror').textContent || 'XML parse error';
+      throw new Error(msg);
     }
+    renderDocument(xmlDoc);
+  } catch(err){
+    alert('Error parsing XML: ' + err.message);
+  }
+});
 
-    const root = xmlDoc.documentElement;
-    const ulTree = buildCategoryList(root);
+/* Open in new window (writes the current rendered HTML into a new window) */
+byId('openBtn').addEventListener('click', ()=>{
+  const html = buildStandaloneHTML();
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+});
 
-    const resultDoc = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>XML Tree</title>
-<style>
-  body { font-family: system-ui, sans-serif; margin: 1rem; line-height: 1.5; }
-  ul { list-style-type: none; margin-left: 1em; padding-left: 1em; border-left: 1px dotted #aaa; }
-  li { margin: 0.2em 0; }
-  .toggle { cursor: pointer; color: #0078d7; margin-right: 4px; user-select: none; }
-  .collapsed > ul { display: none; }
-  .abbr { color: #666; margin-left: 0.5em; font-size: 0.9em; }
-  button { padding: 0.5rem 0.8rem; margin-bottom: 1rem; background: #0078d7; color: white; border: none; border-radius: 0.4rem; }
-</style>
-</head>
-<body>
-<button id="saveBtn">Save as HTML</button>
-${ulTree.outerHTML}
+/* Save as HTML */
+byId('saveBtn').addEventListener('click', ()=>{
+  const html = buildStandaloneHTML();
+  const blob = new Blob([html], {type:'text/html'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'flex_xml_view.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
 
-<script>
-document.querySelectorAll('.toggle').forEach(t => {
-  t.addEventListener('click', () => {
-    t.parentElement.classList.toggle('collapsed');
-    t.textContent = t.textContent === '▾' ? '▸' : '▾';
+/* ======= Mode detection & render orchestration ======= */
+let globalState = {
+  phonemeIndex: {},      // id -> phoneme object
+  idToNatclassIds: {},  // phonemeId -> [natclassElementIds]
+  natclassElements: {}, // nat class id -> DOM element
+  phonemeRowIds: {},    // phonemeId -> row element id
+  showNames: false
+};
+
+byId('showNames').addEventListener('change', e=>{
+  globalState.showNames = e.target.checked;
+  // update currently rendered generic labels if any
+  const genLabels = document.querySelectorAll('[data-gen-label]');
+  genLabels.forEach(el=>{
+    const label = el.getAttribute('data-gen-label');
+    el.previousSibling && (el.previousSibling.textContent = globalState.showNames ? (label + ': ') : '');
   });
 });
 
-document.getElementById('saveBtn').addEventListener('click', () => {
-  const blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'xml_tree.html';
-  a.click();
-});
-<\/script>
-</body></html>
-`;
+function renderDocument(xmlDoc){
+  // reset state
+  globalState = { phonemeIndex:{}, idToNatclassIds:{}, natclassElements:{}, phonemeRowIds:{}, showNames: byId('showNames').checked };
+  const root = xmlDoc.documentElement;
+  const tag = root.nodeName;
+  byId('modeLabel').textContent = tag;
+  const area = byId('renderArea');
+  area.innerHTML = ''; // clear
 
-    const newWindow = window.open();
-    newWindow.document.write(resultDoc);
-    newWindow.document.close();
-
-  } catch (err) {
-    alert("Error parsing XML: " + err.message);
+  if(tag.toLowerCase() === 'list'){
+    const node = renderListView(root);
+    area.appendChild(node);
+  } else if(tag === 'Phonology' || tag.toLowerCase() === 'phonology'){
+    const node = renderPhonologyView(xmlDoc);
+    area.appendChild(node);
+  } else {
+    const node = renderGenericView(root);
+    area.appendChild(node);
   }
-});
+}
 
-function buildCategoryList(node) {
-  const ul = document.createElement('ul');
+/* ======= LIST view (existing behavior preserved) ======= */
+function renderListView(root){
+  const container = create('div');
+  const title = root.querySelector(':scope > name')?.textContent || root.nodeName;
+  const abbr = root.querySelector(':scope > abbr')?.textContent;
+  const header = create('div', {cls:'section-title'}, title + (abbr ? ' (' + abbr + ')' : ''));
+  container.appendChild(header);
 
-  if (node.nodeName === 'item' || node.nodeName === 'list') {
-    const li = document.createElement('li');
-
-    const toggle = document.createElement('span');
-    toggle.textContent = '▾';
-    toggle.classList.add('toggle');
-
-    const name = node.querySelector(':scope > name');
-    const abbr = node.querySelector(':scope > abbr');
-
-    const label = document.createElement('span');
-    label.textContent = name ? name.textContent : node.nodeName;
-
+  // recursive render of item elements
+  function buildItem(node){
+    const li = create('li');
+    const hasChildren = node.querySelector(':scope > item') !== null || Array.from(node.children).some(c=>c.nodeName==='item');
+    const toggle = create('span', {cls:'toggle'}, hasChildren ? '▾' : ' ');
+    if(hasChildren) toggle.style.cursor = 'pointer';
     li.appendChild(toggle);
+
+    const name = node.querySelector(':scope > name')?.textContent || node.nodeName;
+    const ab = node.querySelector(':scope > abbr')?.textContent;
+    const label = create('span', {cls:'label'}, name + (ab ? ' (' + ab + ')' : ''));
     li.appendChild(label);
 
-    if (abbr) {
-      const abbrSpan = document.createElement('span');
-      abbrSpan.classList.add('abbr');
-      abbrSpan.textContent = '(' + abbr.textContent + ')';
-      li.appendChild(abbrSpan);
-    }
-
-    const children = Array.from(node.children).filter(c => c.nodeName === 'item');
-    if (children.length > 0) {
-      const childUL = document.createElement('ul');
-      children.forEach(child => {
-        childUL.appendChild(buildCategoryList(child));
+    // children
+    const childItems = Array.from(node.children).filter(c => c.nodeName === 'item');
+    if(childItems.length){
+      const ul = create('ul', {cls:'tree'});
+      childItems.forEach(ci => ul.appendChild(buildItem(ci)));
+      li.appendChild(ul);
+      toggle.addEventListener('click', ()=> {
+        li.classList.toggle('collapsed');
+        toggle.textContent = toggle.textContent === '▾' ? '▸' : '▾';
       });
-      li.appendChild(childUL);
     }
-
-    ul.appendChild(li);
-  } else {
-    // generic fallback for unexpected elements
-    const li = document.createElement('li');
-    li.textContent = node.textContent.trim();
-    ul.appendChild(li);
+    return li;
   }
 
-  return ul;
+  const topUL = create('ul', {cls:'tree'});
+  // top-level items (direct children <item> of root)
+  const topItems = Array.from(root.children).filter(c => c.nodeName === 'item');
+  topItems.forEach(it => topUL.appendChild(buildItem(it)));
+  container.appendChild(topUL);
+  return container;
 }
-</script>
 
+/* ======= GENERIC view (recursive collapsible ULs) ======= */
+function renderGenericView(root){
+  const container = create('div');
+  const header = create('div', {cls:'section-title'}, 'Generic XML View — Recursive Tree');
+  container.appendChild(header);
+
+  const opts = create('div', {cls:'small-muted'}, 'Toggle "Show element names" to prefix fields with labels like "Name:" (not raw tags).');
+  container.appendChild(opts);
+
+  function build(node){
+    const li = create('li');
+    const childElements = Array.from(node.childNodes).filter(n => n.nodeType === 1 || (n.nodeType === 3 && n.nodeValue.trim()));
+    const hasChildren = childElements.length > 0;
+    const toggle = create('span', {cls:'toggle'}, hasChildren ? '▾' : ' ');
+    if(hasChildren) toggle.style.cursor='pointer';
+    li.appendChild(toggle);
+
+    // label: either "Tag:" or nothing (user choice)
+    const labelText = node.nodeType===1 ? node.nodeName : '';
+    const labelSpan = create('span');
+    if(globalState.showNames && node.nodeType===1){
+      labelSpan.textContent = labelText + ': ';
+      labelSpan.style.fontWeight = '600';
+    }
+    li.appendChild(labelSpan);
+
+    // content or element name + text / children
+    if(node.nodeType === 3){
+      li.appendChild(document.createTextNode(node.nodeValue.trim()));
+    } else {
+      // if element has mixed content maybe show text nodes
+      const textChild = Array.from(node.childNodes).filter(n=>n.nodeType===3 && n.nodeValue.trim())[0];
+      if(textChild && childElements.every(n => n.nodeType===3 || n.nodeType===1 && n.childNodes.length===1 && n.childNodes[0].nodeType===3)){
+        // mostly text content or simple children — show text
+        if(textChild) li.appendChild(create('span', {}, textChild.nodeValue.trim()));
+      } else {
+        // complex — build sublist
+        const subUL = create('ul', {cls:'tree'});
+        childElements.forEach(ch => {
+          subUL.appendChild(build(ch));
+        });
+        li.appendChild(subUL);
+        if(hasChildren){
+          toggle.addEventListener('click', ()=> {
+            li.classList.toggle('collapsed');
+            toggle.textContent = toggle.textContent === '▾' ? '▸' : '▾';
+          });
+        }
+      }
+    }
+    // store label for dynamic toggling
+    if(node.nodeType===1){
+      li.setAttribute('data-gen-label', node.nodeName);
+    }
+    return li;
+  }
+
+  const rootUL = create('ul', {cls:'tree'});
+  rootUL.appendChild(build(root));
+  container.appendChild(rootUL);
+  return container;
+}
+
+/* ======= PHONOLOGY view (enhanced rendering including boundary markers, features, rules, etc.) ======= */
+function renderPhonologyView(xmlDoc){
+  const root = xmlDoc.documentElement;
+  const container = create('div');
+  const header = create('div', {cls:'section-title'}, 'Phonology Summary');
+  container.appendChild(header);
+
+  const meta = create('div', {cls:'meta'}, `Version ${root.getAttribute('Version') || '—'} — DefaultVernWs: ${root.getAttribute('DefaultVernWs') || '—'}`);
+  container.appendChild(meta);
+
+  // reset indices
+  globalState.phonemeIndex = {};
+  globalState.idToNatclassIds = {};
+  globalState.natclassElements = {};
+  globalState.phonemeRowIds = {};
+
+  /* ---------- Index phonemes ---------- */
+  const phonemes = Array.from(xmlDoc.getElementsByTagName('PhPhoneme') || []);
+  phonemes.forEach(p => {
+    const id = p.getAttribute('Id');
+    const symbol = pickAUni(p.querySelector(':scope > Name'));
+    const desc = p.querySelector(':scope > Description Run')?.textContent?.trim() || '';
+    const codes = Array.from(p.querySelectorAll(':scope > Codes PhCode Representation AUni')).map(a => a.textContent.trim()).filter(Boolean);
+    // phonological features can be nested; try collecting simple feature:value pairs if present
+    const featPairs = [];
+    const featNodes = Array.from(p.querySelectorAll(':scope > PhonologicalFeatures *'));
+    if(featNodes.length){
+      // inexpensive attempt: collect child element name and text
+      featNodes.forEach(fn => {
+        const name = fn.nodeName;
+        const value = fn.textContent ? fn.textContent.trim() : '';
+        if(name && value) featPairs.push(`${name}=${value}`);
+      });
+    }
+    globalState.phonemeIndex[id] = { id, symbol, desc, codes, featPairs, node: p };
+  });
+
+  /* ---------- PHONEME SETS (table per set) ---------- */
+  const phonemeSets = Array.from(xmlDoc.getElementsByTagName('PhPhonemeSet') || []);
+  phonemeSets.forEach(set => {
+    const setName = pickAUni(set.querySelector(':scope > Name')) || 'Phoneme Set';
+    const setDiv = create('div', {cls:'natclass'});
+    const title = create('div', {cls:'section-title'}, setName);
+    setDiv.appendChild(title);
+    const setDesc = set.querySelector(':scope > Description Run')?.textContent;
+    if(setDesc) setDiv.appendChild(create('div', {cls:'small-muted'}, setDesc));
+
+    // Build table with optional Features column if any phoneme has features
+    const hasFeat = Object.values(globalState.phonemeIndex).some(p => (p.featPairs && p.featPairs.length));
+    const table = create('table', {cls:'phonemes'});
+    const thead = create('thead');
+    thead.innerHTML = `<tr><th>Symbol</th><th>Description</th><th>ID</th><th>Codes</th>${hasFeat?'<th>Features</th>':''}</tr>`;
+    table.appendChild(thead);
+    const tbody = create('tbody');
+    table.appendChild(tbody);
+
+    // gather phonemes explicitly in this set (PhPhoneme children under Phonemes), fallback to all phonemes
+    const setPhNodes = Array.from(set.querySelectorAll(':scope > Phonemes PhPhoneme')) || [];
+    const rows = setPhNodes.length ? setPhNodes : phonemes;
+    rows.forEach(pnode => {
+      const pid = pnode.getAttribute('Id');
+      const data = globalState.phonemeIndex[pid] || {
+        id: pid,
+        symbol: pickAUni(pnode.querySelector(':scope > Name')) || '',
+        desc: pnode.querySelector(':scope > Description Run')?.textContent || '',
+        codes: Array.from(pnode.querySelectorAll(':scope > Codes PhCode Representation AUni')).map(a=>a.textContent.trim())
+      };
+      const row = create('tr', {id: 'phoneme-row-' + data.id});
+      const symbolCell = create('td');
+      const symBtn = create('span', {cls:'symbol-pill'}, data.symbol || '(no symbol)');
+      symBtn.style.cursor = 'pointer';
+      symBtn.addEventListener('click', ()=> onPhonemeSymbolClick(data.id));
+      symbolCell.appendChild(symBtn);
+      row.appendChild(symbolCell);
+      row.appendChild(create('td', {}, data.desc || ''));
+      row.appendChild(create('td', {}, data.id));
+      row.appendChild(create('td', {}, (data.codes && data.codes.join(', ')) || ''));
+      if(hasFeat){
+        row.appendChild(create('td', {}, (data.featPairs && data.featPairs.join('; ')) || ''));
+      }
+      tbody.appendChild(row);
+      globalState.phonemeRowIds[data.id] = row.id;
+    });
+
+    setDiv.appendChild(table);
+
+    /* ---- Boundary markers inside PhPhonemeSet ---- */
+    const bMarkers = Array.from(set.querySelectorAll(':scope > BoundaryMarkers PhBdryMarker')) || [];
+    if(bMarkers.length){
+      const bmHeader = create('div', {cls:'section-title'}, 'Boundary Markers');
+      setDiv.appendChild(bmHeader);
+      const bmList = create('div', {cls:'small-muted'});
+      bMarkers.forEach(bm => {
+        const bmName = pickAUni(bm.querySelector(':scope > Name')) || bm.getAttribute('Id') || '';
+        const bmCodes = Array.from(bm.querySelectorAll(':scope > Codes PhCode Representation AUni')).map(a=>a.textContent.trim()).filter(Boolean);
+        const line = create('div', {}, `${bmName} ${ bmCodes.length ? '(' + bmCodes.join(', ') + ')' : ''}`);
+        bmList.appendChild(line);
+      });
+      setDiv.appendChild(bmList);
+    }
+
+    container.appendChild(setDiv);
+  });
+
+  /* ---------- NATURAL CLASSES (PhNCSegments) with symbol mapping ---------- */
+  const ncHeader = create('div', {cls:'section-title'}, 'Natural Classes');
+  container.appendChild(ncHeader);
+  const ncContainer = create('div');
+  container.appendChild(ncContainer);
+
+  const naturalClasses = Array.from(xmlDoc.getElementsByTagName('PhNCSegments') || []);
+  naturalClasses.forEach((nc, idx) => {
+    const ncId = nc.getAttribute('Id') || ('nc-' + idx);
+    const name = pickAUni(nc.querySelector(':scope > Name')) || nc.getAttribute('Id') || 'Unnamed';
+    const abbr = pickAUni(nc.querySelector(':scope > Abbreviation')) || '';
+    const desc = nc.querySelector(':scope > Description Run')?.textContent || '';
+    const ncEl = create('div', {cls:'natclass', id: 'natclass-' + ncId});
+    const toggle = create('span', {cls:'toggle'}, '▾');
+    toggle.style.cursor = 'pointer';
+    const title = create('div', {cls:'section-title'});
+    title.appendChild(toggle);
+    title.appendChild(document.createTextNode(name + (abbr ? ' (' + abbr + ')' : '')));
+    ncEl.appendChild(title);
+    if(desc) ncEl.appendChild(create('div', {cls:'small-muted'}, desc));
+
+    const segments = Array.from(nc.querySelectorAll(':scope > Segments')).map(s => s.getAttribute('dst')).filter(Boolean);
+    const membersDiv = create('div', {cls:'members'});
+    if(segments.length === 0){
+      membersDiv.appendChild(create('div', {cls:'small-muted'}, '(no explicit segments)'));
+    } else {
+      segments.forEach(sid => {
+        const phon = globalState.phonemeIndex[sid];
+        const text = phon ? (phon.symbol || phon.id) : sid;
+        const pill = create('span', {cls:'symbol-pill'}, text);
+        pill.title = phon ? (phon.desc || '') : '';
+        pill.addEventListener('click', ()=> {
+          if(globalState.phonemeRowIds[sid]){
+            scrollToAndHighlight(globalState.phonemeRowIds[sid]);
+          } else {
+            alert('Phoneme ID ' + sid + ' not found in phoneme index.');
+          }
+        });
+        membersDiv.appendChild(pill);
+        if(!globalState.idToNatclassIds[sid]) globalState.idToNatclassIds[sid] = [];
+        globalState.idToNatclassIds[sid].push(ncEl.id);
+      });
+    }
+    ncEl.appendChild(membersDiv);
+    toggle.addEventListener('click', ()=> {
+      ncEl.classList.toggle('collapsed');
+      toggle.textContent = toggle.textContent === '▾' ? '▸' : '▾';
+    });
+    globalState.natclassElements[ncEl.id] = ncEl;
+    ncContainer.appendChild(ncEl);
+  });
+
+  /* ---------- Environments & Contexts ---------- */
+  const envNodes = Array.from(xmlDoc.getElementsByTagName('Environments') || []);
+  envNodes.forEach(n => {
+    const sec = create('div', {cls:'natclass'});
+    const title = create('div', {cls:'section-title'}, 'Environments');
+    sec.appendChild(title);
+    // If it's empty, show placeholder
+    if(!n.hasChildNodes() || Array.from(n.childNodes).every(c=>c.nodeType===3 && !c.nodeValue.trim())){
+      sec.appendChild(create('div', {cls:'small-muted'}, '(no environment definitions)'));
+    } else {
+      sec.appendChild(renderGenericView(n));
+    }
+    container.appendChild(sec);
+  });
+  const ctxNodes = Array.from(xmlDoc.getElementsByTagName('Contexts') || []);
+  ctxNodes.forEach(n => {
+    const sec = create('div', {cls:'natclass'});
+    const title = create('div', {cls:'section-title'}, 'Contexts');
+    sec.appendChild(title);
+    if(!n.hasChildNodes() || Array.from(n.childNodes).every(c=>c.nodeType===3 && !c.nodeValue.trim())){
+      sec.appendChild(create('div', {cls:'small-muted'}, '(no contexts defined)'));
+    } else {
+      sec.appendChild(renderGenericView(n));
+    }
+    container.appendChild(sec);
+  });
+
+  /* ---------- Phonological Rules (attempt to render human-readable rules) ---------- */
+  const rulesNodes = Array.from(xmlDoc.getElementsByTagName('PhonRules') || xmlDoc.getElementsByTagName('PhPhonRule') || []);
+  if(rulesNodes.length){
+    const rulesSection = create('div', {cls:'natclass'});
+    rulesSection.appendChild(create('div', {cls:'section-title'}, 'Phonological Rules'));
+    // search for concrete rule nodes inside
+    const ruleElems = Array.from(xmlDoc.querySelectorAll('PhonRules PhRule, PhPhonRule, PhRule')) || [];
+    if(ruleElems.length === 0){
+      // fallback: show raw PhonRules node
+      ruleElems.push(...rulesNodes);
+    }
+    ruleElems.forEach(rn => {
+      // Try to parse the rule: many FieldWorks rules are structured; common child tags include Form, Environment, Target, Change, Context, Description, Name
+      const name = rn.querySelector(':scope > Name AUni')?.textContent || rn.getAttribute('Id') || '';
+      const desc = rn.querySelector(':scope > Description Run')?.textContent || '';
+      const target = rn.querySelector(':scope > Target')?.textContent || rn.querySelector(':scope > Form')?.textContent || '';
+      const change = rn.querySelector(':scope > Change')?.textContent || rn.querySelector(':scope > Output')?.textContent || '';
+      const env = rn.querySelector(':scope > Environment')?.textContent || rn.querySelector(':scope > Context')?.textContent || '';
+      const ruleDiv = create('div', {cls:'small-muted'});
+      let line = '';
+      if(target && change){
+        line = `${target} → ${change}`;
+        if(env) line += ` / ${env}`;
+      } else if(name && desc){
+        line = `${name} — ${desc}`;
+      } else {
+        // fallback to raw XML snippet
+        line = rn.textContent.trim().slice(0,300) + (rn.textContent.trim().length>300? '…': '');
+      }
+      ruleDiv.textContent = line;
+      rulesSection.appendChild(ruleDiv);
+    });
+    container.appendChild(rulesSection);
+  }
+
+  /* ---------- Feature System ---------- */
+  const featSys = xmlDoc.querySelector('PhFeatureSystem');
+  if(featSys){
+    const fsDiv = create('div', {cls:'natclass'});
+    fsDiv.appendChild(create('div', {cls:'section-title'}, 'Feature System'));
+    const types = featSys.querySelector(':scope > Types');
+    const feats = featSys.querySelector(':scope > Features');
+    if((!types || !types.hasChildNodes()) && (!feats || !feats.hasChildNodes())){
+      fsDiv.appendChild(create('div', {cls:'small-muted'}, '(no feature types or features defined)'));
+    } else {
+      if(types && types.hasChildNodes()){
+        fsDiv.appendChild(create('div', {cls:'small-muted'}, 'Types:'));
+        fsDiv.appendChild(renderGenericView(types));
+      }
+      if(feats && feats.hasChildNodes()){
+        fsDiv.appendChild(create('div', {cls:'small-muted'}, 'Features:'));
+        fsDiv.appendChild(renderGenericView(feats));
+      }
+    }
+    container.appendChild(fsDiv);
+  }
+
+  /* ---------- Feature Constraints & PhIters placeholders ---------- */
+  const fc = xmlDoc.querySelector('FeatureConstraints, PhFeatureConstraints, PhFeatureConstraint');
+  const fcDiv = create('div', {cls:'natclass'});
+  fcDiv.appendChild(create('div', {cls:'section-title'}, 'Feature Constraints'));
+  if(fc && fc.hasChildNodes()){
+    fcDiv.appendChild(renderGenericView(fc));
+  } else {
+    fcDiv.appendChild(create('div', {cls:'small-muted'}, '(none)'));
+  }
+  container.appendChild(fcDiv);
+
+  const piters = Array.from(xmlDoc.getElementsByTagName('PhIters') || []);
+  if(piters.length){
+    const itDiv = create('div', {cls:'natclass'});
+    itDiv.appendChild(create('div', {cls:'section-title'}, `Phonological Iterations (${piters.length})`));
+    piters.forEach((it, i) => {
+      itDiv.appendChild(create('div', {cls:'small-muted'}, `Iteration ${i+1}:`));
+      if(it.hasChildNodes()) itDiv.appendChild(renderGenericView(it));
+      else itDiv.appendChild(create('div', {cls:'small-muted'}, '(empty)'));
+    });
+    container.appendChild(itDiv);
+  }
+
+  /* ---------- Final instructions and interaction wiring ---------- */
+  const foot = create('div', {cls:'foot'}, 'Click a phoneme symbol to highlight its row. Click a phoneme row to highlight natural classes that contain it.');
+  container.appendChild(foot);
+
+  // Add event listeners for phoneme rows to highlight their classes (same as before)
+  Object.keys(globalState.phonemeRowIds).forEach(pid => {
+    const rid = globalState.phonemeRowIds[pid];
+    const row = document.getElementById(rid);
+    if(row){
+      row.addEventListener('click', ()=> {
+        const natIds = globalState.idToNatclassIds[pid] || [];
+        Object.values(globalState.natclassElements).forEach(el=> el.style.boxShadow = '');
+        if(natIds.length){
+          natIds.forEach(nid => {
+            const el = globalState.natclassElements[nid];
+            if(el){
+              el.style.boxShadow = '0 0 0 3px rgba(11,110,219,0.08)';
+              el.scrollIntoView({behavior:'smooth', block:'center'});
+            }
+          });
+        } else {
+          // if none, just highlight the row instead
+          const r = document.getElementById(rid);
+          if(r){ r.classList.add('highlight'); setTimeout(()=> r.classList.remove('highlight'), 1200); }
+        }
+      });
+    }
+  });
+
+  return container;
+}
+
+/* ======= Utilities used by phonology rendering ======= */
+
+// choose an AUni text: prefer ws containing 'fau' (vernacular), else 'en', else first AUni content
+function pickAUni(nameNode){
+  if(!nameNode) return '';
+  const aunis = Array.from(nameNode.querySelectorAll('AUni'));
+  if(!aunis.length) {
+    // sometimes content is directly text (rare). return textContent trimmed
+    const t = nameNode.textContent && nameNode.textContent.trim();
+    return t || '';
+  }
+  for(const a of aunis){
+    const ws = (a.getAttribute('ws')||'').toLowerCase();
+    if(ws.includes('fau')) return a.textContent.trim();
+  }
+  for(const a of aunis){
+    const ws = (a.getAttribute('ws')||'').toLowerCase();
+    if(ws.includes('en')) return a.textContent.trim();
+  }
+  // fallback first
+  return aunis[0].textContent.trim();
+}
+
+/* ======= Click & navigation helpers ======= */
+function onPhonemeSymbolClick(phonId){
+  const rowId = globalState.phonemeRowIds[phonId];
+  if(!rowId){ alert('Phoneme entry not found: ' + phonId); return; }
+  scrollToAndHighlight(rowId);
+}
+function scrollToAndHighlight(rowId){
+  const el = document.getElementById(rowId);
+  if(!el) return;
+  // clear existing highlights
+  document.querySelectorAll('tr.highlight').forEach(r=> r.classList.remove('highlight'));
+  el.classList.add('highlight');
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  // also add temporary scroll-target class for extra visibility
+  el.classList.add('scroll-target');
+  setTimeout(()=> el.classList.remove('scroll-target'), 2200);
+}
+
+/* ======= Build standalone HTML (for open/save) ======= */
+function buildStandaloneHTML(){
+  const render = byId('renderArea');
+  const content = render.innerHTML;
+
+  // Build a self-contained HTML page string.
+  // Note the escaped <\/script> so VS Code doesn't think the template ends early.
+  const doc = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>FLEx XML View Export</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;margin:18px;color:#111;background:#fbfbfb}
+  .toggle{cursor:pointer;color:#0b6edb;margin-right:6px}
+  ul.tree{list-style:none;margin:6px 0 6px 14px;padding-left:10px;border-left:1px dotted #ddd}
+  .collapsed > ul{display:none}
+  .symbol-pill{background:#f1f8ff;border:1px solid #d6eaff;padding:3px 7px;border-radius:6px;cursor:pointer}
+  .highlight{background:#fff2b8}
+  table.phonemes{width:100%;border-collapse:collapse;margin-top:8px}
+  table.phonemes th, table.phonemes td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+  .natclass{border:1px solid #e2e2e2;padding:8px;border-radius:6px;margin-bottom:10px;background:linear-gradient(#fff,#f9f9f9)}
+</style>
+</head>
+<body>
+${content}
+<script>
+  // enable collapse toggles
+  document.querySelectorAll('.toggle').forEach(t=> {
+    const parent = t.parentElement;
+    t.addEventListener('click', ()=> {
+      parent.classList.toggle('collapsed');
+      t.textContent = t.textContent === '▾' ? '▸' : '▾';
+    });
+  });
+
+  // enable symbol pills to scroll to phoneme rows
+  document.querySelectorAll('.symbol-pill').forEach(p=> {
+    p.addEventListener('click', ()=> {
+      const txt = p.textContent.trim();
+      const rows = document.querySelectorAll('table.phonemes tbody tr');
+      for(const r of rows){
+        if(r.cells[0] && r.cells[0].textContent.trim() === txt){
+          r.scrollIntoView({behavior:'smooth', block:'center'});
+          r.classList.add('highlight');
+          setTimeout(()=> r.classList.remove('highlight'), 1800);
+          return;
+        }
+      }
+    });
+  });
+<\/script>
+</body>
+</html>`;
+  return doc;
+}
+
+/* ======= Initial small demo load if the user already uploaded (optional) ======= */
+// If page opened after a file drag/paste, nothing auto loads. User should click Transform.
+</script>
 </body>
 </html>
