@@ -232,40 +232,36 @@ function renderDocument(xmlDoc){
 }
 
 /* ===== Monolingual List (unchanged behavior) ===== */
-function renderListView(root){
+function renderListView(root) {
   const container = create('div');
-  const title = root.querySelector(':scope > name, :scope > Name')?.textContent?.trim() || 'List';
-  container.appendChild(create('div', {cls:'section-title'}, title));
+  const title = root.querySelector(':scope > name, :scope > Name')?.textContent?.trim() || 'Lists';
+  container.appendChild(create('div', { cls: 'section-title' }, title));
 
-  function buildItem(node){
+  function buildItem(node) {
     const li = create('li');
-    const hasChildren = node.querySelector(':scope > item') !== null;
-    const toggle = create('span', {cls:'toggle'}, hasChildren ? '▾' : ' ');
-    if(hasChildren) toggle.style.cursor = 'pointer';
-    li.appendChild(toggle);
-
     const name = node.querySelector(':scope > name, :scope > Name')?.textContent?.trim() || node.nodeName;
     const abbr = node.querySelector(':scope > abbr, :scope > Abbreviation')?.textContent?.trim();
     const text = abbr ? `${name} (${abbr})` : name;
     li.appendChild(document.createTextNode(text));
 
-    const childItems = Array.from(node.children).filter(c=>c.nodeName.toLowerCase() === 'item');
-    if(childItems.length){
-      const ul = create('ul', {cls:'tree'});
-      childItems.forEach(ci => ul.appendChild(buildItem(ci)));
+    const childItems = Array.from(node.children).filter(c => c.nodeName.toLowerCase() === 'item');
+    const subItems = Array.from(node.querySelectorAll(':scope > subitems > item'));
+    const allChildren = childItems.concat(subItems);
+
+    if (allChildren.length) {
+      const ul = create('ul', { cls: 'tree' });
+      allChildren.forEach(ci => ul.appendChild(buildItem(ci)));
       li.appendChild(ul);
-      toggle.addEventListener('click', ()=> {
-        li.classList.toggle('collapsed');
-        toggle.textContent = toggle.textContent === '▾' ? '▸' : '▾';
-      });
     }
+
     return li;
   }
 
-  const topUL = create('ul', {cls:'tree'});
-  const topItems = Array.from(root.children).filter(c => c.nodeName.toLowerCase() === 'item');
+  const topUL = create('ul', { cls: 'tree' });
+  const topItems = Array.from(root.querySelectorAll(':scope > item'));
   topItems.forEach(it => topUL.appendChild(buildItem(it)));
   container.appendChild(topUL);
+
   return container;
 }
 
