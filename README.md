@@ -1,6 +1,6 @@
 # FLEx XML Viewer
 
-Client‑side viewer for exploring FieldWorks (FLEx) XML exports in a clean, readable format. Runs entirely in the browser (no server) and also ships as a Windows desktop app via Electron.
+Client‑side viewer for exploring FieldWorks (FLEx) XML exports in a clean, readable format (which you can also copy and paste). Runs entirely in the browser (no server) and also ships as a Windows desktop app via Electron.
   
 This project is part of the Field Linguistics Extension Tools (FLET) project: [https://github.com/rulingAnts/flet](https://github.com/rulingAnts/flet)
 
