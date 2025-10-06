@@ -33,7 +33,7 @@ All processing is local in your browser; your files are not uploaded.
 
 ## Download for Windows
 
-1. Go to the latest release: https://github.com/rulingAnts/flexml_display/releases/latest
+1. Go to the latest release: [https://github.com/rulingAnts/flexml_display/releases/latest](https://github.com/rulingAnts/flexml_display/releases/latest)
 2. Download the installer (.exe). You may also see a “portable” .exe.
 3. Run the installer. If Windows SmartScreen warns (unsigned binary), choose “More info” → “Run anyway.”
 
