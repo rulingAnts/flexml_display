@@ -233,32 +233,72 @@ function renderDocument(xmlDoc){
 
 /* ===== Monolingual List (unchanged behavior) ===== */
 function renderListView(root) {
+  // Accept either a single <list> or a top-level <lists> container
+  if(!root) return create('div', {}, '(no list)');
+  const nodeName = (root.nodeName || '').toLowerCase();
+  if(nodeName === 'lists'){
+    const outer = create('div');
+    const lists = Array.from(root.querySelectorAll(':scope > list'));
+    if(lists.length === 0) return outer;
+    lists.forEach(l => outer.appendChild(renderListView(l)));
+    return outer;
+  }
+
   const container = create('div');
-  const title = root.querySelector(':scope > name, :scope > Name')?.textContent?.trim() || 'Lists';
+  // title: prefer Name or name inside the list; also accept a <name><str> pattern
+  const title = (root.querySelector(':scope > name, :scope > Name')?.textContent?.trim()) || (root.querySelector(':scope > Name str, :scope > name str')?.textContent?.trim()) || 'List';
   container.appendChild(create('div', { cls: 'section-title' }, title));
+
+  // helper to find direct "item-like" children (item, letitem, sditem)
+  function itemChildrenOf(el){
+    return Array.from(el.querySelectorAll(':scope > item, :scope > letitem, :scope > sditem'));
+  }
 
   function buildItem(node) {
     const li = create('li');
-    const name = node.querySelector(':scope > name, :scope > Name')?.textContent?.trim() || node.nodeName;
-    const abbr = node.querySelector(':scope > abbr, :scope > Abbreviation')?.textContent?.trim();
-    const text = abbr ? `${name} (${abbr})` : name;
+
+    // collect children from direct item-like children and <subitems>
+    const direct = itemChildrenOf(node);
+    const subitemsContainer = node.querySelector(':scope > subitems');
+    const sub = subitemsContainer ? itemChildrenOf(subitemsContainer) : [];
+    const allChildren = direct.concat(sub);
+    const hasChildren = allChildren.length > 0;
+
+    // add toggle affordance (always present for consistent layout)
+    const toggle = create('span', { cls: 'toggle' }, hasChildren ? '\u25be' : ' ');
+    if(hasChildren) toggle.style.cursor = 'pointer';
+    li.appendChild(toggle);
+
+    // display name (handle <name ws="..."> and <name><str ws=...> patterns)
+    const nameNode = node.querySelector(':scope > name, :scope > Name');
+    const rawName = nameNode ? nameNode.textContent.trim() : (node.getAttribute && node.getAttribute('name')) || node.nodeName;
+    const abbrNode = node.querySelector(':scope > abbr, :scope > Abbreviation');
+    const abbrText = abbrNode ? abbrNode.textContent.trim() : (node.getAttribute && (node.getAttribute('abbr') || node.getAttribute('ws'))) || '';
+    const text = abbrText ? `${rawName} (${abbrText})` : rawName;
     li.appendChild(document.createTextNode(text));
 
-    const childItems = Array.from(node.children).filter(c => c.nodeName.toLowerCase() === 'item');
-    const subItems = Array.from(node.querySelectorAll(':scope > subitems > item'));
-    const allChildren = childItems.concat(subItems);
-
-    if (allChildren.length) {
+    if (hasChildren) {
       const ul = create('ul', { cls: 'tree' });
       allChildren.forEach(ci => ul.appendChild(buildItem(ci)));
       li.appendChild(ul);
+
+      toggle.addEventListener('click', () => {
+        li.classList.toggle('collapsed');
+        toggle.textContent = toggle.textContent === '\u25be' ? '\u25b8' : '\u25be';
+      });
     }
 
     return li;
   }
 
+  // find top-level items: could be directly under list (item/letitem/sditem) or inside an <items> wrapper
+  let topItems = itemChildrenOf(root);
+  if(topItems.length === 0){
+    const itemsWrapper = root.querySelector(':scope > items');
+    if(itemsWrapper) topItems = itemChildrenOf(itemsWrapper);
+  }
+
   const topUL = create('ul', { cls: 'tree' });
-  const topItems = Array.from(root.querySelectorAll(':scope > item'));
   topItems.forEach(it => topUL.appendChild(buildItem(it)));
   container.appendChild(topUL);
 
