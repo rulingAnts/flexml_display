@@ -4,11 +4,43 @@
   "description": "Electron wrapper for FLEx XML Viewer.",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win nsis --x64"
   },
   "author": "",
+  "engines": {
+    "node": "22.20.0"
+  },
   "license": "MIT",
   "devDependencies": {
-    "electron": "^38.2.1"
+    "electron": "^38.2.1",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.rulingants.flexmlviewer",
+    "productName": "FLEx XML Viewer",
+    "files": [
+      "docs/**/*",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
