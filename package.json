@@ -7,13 +7,15 @@
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win nsis --x64"
+    "dist:win": "electron-builder --win nsis",
+    "dist:win:portable": "electron-builder --win portable",
+    "dist:win:all": "electron-builder --win nsis portable"
   },
   "author": "",
   "engines": {
     "node": "22.20.0"
   },
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "electron": "^38.2.1",
     "electron-builder": "^24.0.0"
@@ -40,7 +42,8 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "license": "LICENSE"
     }
   }
 }

@@ -21,7 +21,7 @@ Not in scope: LIFT, FLExText (open those in FLEx), XLingPaper (open in XLingPape
 
 ## Try it online (no install)
 
-1. Open the web app: https://rulingants.github.io/flexml_display
+1. Open the web app: [https://rulingants.github.io/flexml_display](https://rulingants.github.io/flexml_display)
 2. Paste XML into the textbox or choose a .xml file.
 3. Click Transform.
 4. Optional:
@@ -33,8 +33,8 @@ All processing is local in your browser; your files are not uploaded.
 
 ## Download for Windows
 
-1. Go to the latest release: https://github.com/rulingAnts/flexml_display/releases/latest
-2. Download the installer (.exe). You may also see a “portable” .exe.
+1. Go to the latest release: [https://github.com/rulingAnts/flexml_display/releases/latest](https://github.com/rulingAnts/flexml_display/releases/latest)
+2. Download the installer (Setup) (.exe). You may also see a “portable” .exe.
 3. Run the installer. If Windows SmartScreen warns (unsigned binary), choose “More info” → “Run anyway.”
 
 The desktop app bundles the same viewer for offline use.
