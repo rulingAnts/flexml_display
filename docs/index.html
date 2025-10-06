@@ -13,14 +13,14 @@
     --border:#e2e2e2;
     --highlight:#fff2b8;
   }
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; margin:18px; background:var(--bg); color:#111}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:18px;background:var(--bg);color:#111}
   header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
   h1{font-size:1.1rem;margin:0}
   textarea{width:720px;max-width:100%;height:220px;font-family:monospace;padding:8px;border:1px solid var(--border);border-radius:6px;background:linear-gradient(#fff,#fcfcfc)}
   input[type=file]{padding:6px}
   button{background:var(--accent);color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
   button.secondary{background:#ddd;color:#111}
-  .small-btn{padding:3px 6px;font-size:0.85rem;border-radius:5px}
+  .small-btn{padding:4px 8px;font-size:0.85rem;border-radius:6px}
   .viewer{margin-top:18px;background:var(--card);border:1px solid var(--border);padding:14px;border-radius:8px;box-shadow:0 1px 0 rgba(0,0,0,0.03)}
   .controls-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
   .section-title{font-weight:600;margin:8px 0;font-size:1rem}
@@ -40,27 +40,61 @@
   .small-muted{font-size:0.9rem;color:var(--muted)}
   .translation-main{font-weight:600}
   .translation-others{color:var(--muted);margin-left:6px;font-size:0.95rem}
-  .lang-controls{display:flex;align-items:center;gap:8px;margin:6px 0 12px 0}
+  .lang-controls{display:flex;align-items:center;gap:8px;margin:6px 0 12px 0;flex-wrap:wrap}
   .lang-controls .lang-item{display:flex;align-items:center;gap:6px;padding:4px}
-  .icon-btn{background:#f5f5f5;border:1px solid #e0e0e0;padding:4px 6px;border-radius:6px;cursor:pointer}
+  .icon-btn{background:#fff;border:1px solid #e0e0e0;padding:5px 7px;border-radius:6px;cursor:pointer}
+  .wordform-card{border:1px solid #e6e6e6;padding:10px;border-radius:8px;margin-bottom:8px;background:linear-gradient(#fff,#fcfcff)}
+  .wordform-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .wordform-main{font-weight:700;font-size:1.05rem}
+  .wordform-meta{color:var(--muted);font-size:0.9rem}
+  .wordform-body{margin-top:8px}
+  .table-view{width:100%;border-collapse:collapse}
+  .table-view th,.table-view td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+  .controls-inline{display:flex;gap:8px;align-items:center;margin-bottom:8px}
   footer{margin-top:28px;padding-top:10px;border-top:1px solid #e6e6e6;color:var(--muted);font-size:0.9rem}
 </style>
 </head>
 <body>
+
 <header>
   <h1>FLEx XML Viewer</h1>
-  <div class="muted small-muted" style="margin-left:auto">© 2025 Seth Johnston</div>
+  <div style="margin-left:auto" class="small-muted">© 2025 Seth Johnston</div>
 </header>
+
+  <section style="background:#eef5ff;border:1px solid #c8dbff;padding:10px 14px;border-radius:8px;margin-bottom:12px">
+  <h2 style="font-size:1rem;margin-top:0">About FLEx XML Viewer</h2>
+  <p>
+    <strong>FLEx XML Viewer</strong> is a client-side web app for viewing and exploring
+    <a href="https://software.sil.org/fieldworks/" target="_blank" rel="noopener noreferrer">FieldWorks (FLEx)</a>
+    XML exports in a structured, readable format. It runs entirely in your browser and requires no server.
+  </p>
+  <p>This viewer supports the following FieldWorks export types:</p>
+  <ul style="margin-top:4px">
+    <li><strong>Lists</strong> — displays hierarchical <code>&lt;list&gt;</code> structures as collapsible nested lists.</li>
+    <li><strong>Translated Lists</strong> — handles multilingual <code>&lt;AUni&gt;</code>-based lists with language ordering and visibility controls.</li>
+    <li><strong>Phonology</strong> — renders natural classes, phoneme inventories, and cross-references in human-readable tables.</li>
+    <li><strong>Wordforms</strong> — displays lexical items and analyses in expandable cards or sortable tables.</li>
+    <li><strong>Generic XML</strong> — provides a recursive tree view for any other well-formed XML data.</li>
+  </ul>
+  <p>
+    This app does <em>not</em> process <strong>LIFT</strong> or <strong>FLExText</strong> exports — those should be opened directly in FLEx.
+    Discourse XML and Dekereke exports are also outside this tool’s scope:
+    see the upcoming <a href="https://github.com/rulingAnts/lfet" target="_blank" rel="noopener noreferrer">LFET project</a>
+    for tools to view and convert those formats (including an Excel converter for Dekereke).
+  </p>
+</section>
 
 <textarea id="xmlInput" placeholder="Paste XML here or choose a file..."></textarea>
 
 <div class="controls-row">
   <button id="transformBtn">Transform</button>
   <button id="resetBtn" class="secondary">Reset</button>
+
   <label style="display:flex;align-items:center;gap:8px" class="small-muted">
     <input id="showNames" type="checkbox"> Show element names
   </label>
-  <div style="margin-left:auto;display:flex;gap:8px">
+
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
     <input id="fileInput" type="file" accept=".xml,.xml.txt" />
     <button id="openBtn" class="secondary">Open in new window</button>
     <button id="saveBtn" class="secondary">Save as HTML</button>
@@ -71,10 +105,9 @@
   <div id="renderArea" class="small-muted">Paste or upload an XML file, then click Transform.</div>
 </div>
 
-<!-- Footer / license -->
 <footer>
   <div>© 2025 Seth Johnston. This software is licensed under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU Affero General Public License v3.0 (AGPL-3.0)</a>.</div>
-  <div>Portions of this code were generated collaboratively with <strong>ChatGPT (GPT-5)</strong> by OpenAI under the author’s direction and guidance.</div>
+  <div>Portions of this code were generated collaboratively with <strong>ChatGPT (GPT-5)</strong> by OpenAI, under the author’s direction and guidance.</div>
 </footer>
 
 <script>
@@ -91,8 +124,10 @@ function create(tag, attrs={}, text){
   return el;
 }
 
-/* ===== Global state & localStorage helpers ===== */
+/* ===== Persistence keys and state ===== */
 const LANG_PREFS_KEY = 'flex_xml_viewer_lang_prefs_v1';
+const WORDFORM_PREFS_KEY = 'flex_xml_viewer_wordform_prefs_v1';
+
 let globalState = {
   phonemeIndex: {},
   idToNatclassIds: {},
@@ -101,12 +136,8 @@ let globalState = {
   showNames: false
 };
 
-function saveLangPrefs(prefs){
-  try{ localStorage.setItem(LANG_PREFS_KEY, JSON.stringify(prefs)); } catch(e){}
-}
-function loadLangPrefs(){
-  try{ const s = localStorage.getItem(LANG_PREFS_KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; }
-}
+function saveJSON(key, obj){ try{ localStorage.setItem(key, JSON.stringify(obj)); } catch(e){} }
+function loadJSON(key){ try{ const s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch(e){ return null; } }
 
 /* ===== File & UI wiring ===== */
 byId('fileInput').addEventListener('change', async e=>{
@@ -170,6 +201,12 @@ function renderDocument(xmlDoc){
   const area = byId('renderArea');
   area.innerHTML = '';
 
+  // Order of detection: Phonology, Translated Lists (AUni multi), Monolingual list, Wordforms, Generic
+  if(tag === 'phonology'){
+    area.appendChild(renderPhonologyView(xmlDoc));
+    return;
+  }
+
   if(tag === 'list' || tag === 'lists'){
     // detect AUni-based multilingual lists
     const aunis = xmlDoc.querySelectorAll('AUni[ws]');
@@ -183,8 +220,10 @@ function renderDocument(xmlDoc){
     }
   }
 
-  if(tag === 'phonology'){
-    area.appendChild(renderPhonologyView(xmlDoc));
+  // Wordforms detection (FieldWorks uses a <wordforms> root or similar)
+  const wfNodes = xmlDoc.getElementsByTagName('wordforms');
+  if(wfNodes && wfNodes.length > 0){
+    area.appendChild(renderWordformsView(xmlDoc));
     return;
   }
 
@@ -210,7 +249,7 @@ function renderListView(root){
     const text = abbr ? `${name} (${abbr})` : name;
     li.appendChild(document.createTextNode(text));
 
-    const childItems = Array.from(node.children).filter(c=>c.nodeName === 'item' || c.nodeName === 'Item');
+    const childItems = Array.from(node.children).filter(c=>c.nodeName.toLowerCase() === 'item');
     if(childItems.length){
       const ul = create('ul', {cls:'tree'});
       childItems.forEach(ci => ul.appendChild(buildItem(ci)));
@@ -232,7 +271,7 @@ function renderListView(root){
 
 /* ===== Translated (multilingual) List view + Language Controls ===== */
 function renderTranslatedListView(root, langList){
-  // canonicalize languages (stable order): try to prefer 'en' first if present
+  // canonicalize languages (stable order): prefer 'en' if present
   const langs = Array.from(langList);
   langs.sort((a,b)=>{
     if(a.toLowerCase().includes('en') && !b.toLowerCase().includes('en')) return -1;
@@ -241,7 +280,7 @@ function renderTranslatedListView(root, langList){
   });
 
   // load saved prefs and merge defaults
-  const saved = loadLangPrefs() || {};
+  const saved = loadJSON(LANG_PREFS_KEY) || {};
   const prefs = {};
   langs.forEach((ws,i)=> {
     prefs[ws] = {
@@ -250,22 +289,20 @@ function renderTranslatedListView(root, langList){
       visible: (saved[ws] && typeof saved[ws].visible === 'boolean') ? saved[ws].visible : true
     };
   });
-  // ensure order indices are compact 0..n-1 by sort
-  const orderedLangs = Object.values(prefs).sort((a,b)=>a.order - b.order).map(l=>l.ws);
+  // compact orders
+  const orderedLangs = Object.values(prefs).sort((a,b)=>a.order-b.order).map(l=>l.ws);
   orderedLangs.forEach((ws,i)=> prefs[ws].order = i);
-  saveLangPrefs(prefs);
+  saveJSON(LANG_PREFS_KEY, prefs);
 
   const container = create('div');
   const title = root.querySelector(':scope > Name AUni[ws="en"], :scope > Name AUni, :scope > Name, :scope > name')?.textContent?.trim() || 'Translated List';
   container.appendChild(create('div', {cls:'section-title'}, title));
 
-  // language controls (Option A: inline under title)
   const controls = create('div', {cls:'lang-controls'});
   container.appendChild(controls);
 
   function buildLangControls(){
-    controls.innerHTML = ''; // refresh
-    // sort by order
+    controls.innerHTML = '';
     const arr = Object.values(prefs).sort((a,b)=>a.order-b.order);
     arr.forEach((L, idx)=>{
       const item = create('div', {cls:'lang-item'});
@@ -275,48 +312,39 @@ function renderTranslatedListView(root, langList){
       codeSpan.style.fontWeight = '600';
       item.appendChild(codeSpan);
 
-      // Up
       const up = create('button', {cls:'icon-btn', title:'Move up (higher priority)'}, '⬆️');
       up.addEventListener('click', ()=> { swapOrder(L.ws, -1); });
       item.appendChild(up);
 
-      // Down
       const down = create('button', {cls:'icon-btn', title:'Move down (lower priority)'}, '⬇️');
       down.addEventListener('click', ()=> { swapOrder(L.ws, +1); });
       item.appendChild(down);
 
-      // Toggle visibility
       const vis = create('button', {cls:'icon-btn', title: L.visible ? 'Hide language' : 'Show language'}, L.visible ? '👁️' : '🚫');
-      vis.addEventListener('click', ()=> { prefs[L.ws].visible = !prefs[L.ws].visible; saveLangPrefs(prefs); buildLangControls(); renderItems(); });
+      vis.addEventListener('click', ()=> { prefs[L.ws].visible = !prefs[L.ws].visible; saveJSON(LANG_PREFS_KEY, prefs); buildLangControls(); renderItems(); });
       item.appendChild(vis);
 
       controls.appendChild(item);
     });
 
-    // reset button
     const reset = create('button', {cls:'small-btn secondary', title:'Reset language order and visibility to defaults'}, 'Reset');
     reset.addEventListener('click', ()=> {
-      // restore default order (= initial langs) and visible=true
       langs.forEach((ws,i)=> { prefs[ws].order = i; prefs[ws].visible = true; });
-      saveLangPrefs(prefs); buildLangControls(); renderItems();
+      saveJSON(LANG_PREFS_KEY, prefs); buildLangControls(); renderItems();
     });
     controls.appendChild(reset);
   }
 
-  // build list container
   const listContainer = create('div');
   container.appendChild(listContainer);
 
   function renderItems(){
     listContainer.innerHTML = '';
-    // build ordered visible langs array
     const ordered = Object.values(prefs).sort((a,b)=>a.order-b.order).filter(l=>l.visible).map(l=>l.ws);
-    // if none visible, show message
     if(ordered.length === 0){
       listContainer.appendChild(create('div', {cls:'small-muted'}, 'No languages selected. Use controls to show at least one language.'));
       return;
     }
-    // top-level possibilities container
     const poss = root.querySelector(':scope > Possibilities, :scope > possibilities') || root;
     const topItems = Array.from(poss.children).filter(c=>c.nodeType === 1);
     const topUL = create('ul', {cls:'tree'});
@@ -352,48 +380,40 @@ function renderTranslatedListView(root, langList){
     return li;
   }
 
-  // helpers for prefs
   function swapOrder(ws, delta){
     const entries = Object.values(prefs).sort((a,b)=>a.order-b.order);
     const idx = entries.findIndex(e => e.ws === ws);
     const target = idx + delta;
     if(target < 0 || target >= entries.length) return;
-    // swap orders
     const a = entries[idx], b = entries[target];
     const t = a.order; a.order = b.order; b.order = t;
-    saveLangPrefs(prefs); buildLangControls(); renderItems();
+    saveJSON(LANG_PREFS_KEY, prefs); buildLangControls(); renderItems();
   }
 
-  // finish init
   buildLangControls();
   renderItems();
   return container;
 }
 
-/* ===== Helper: collect AUni or return [] ===== */
+/* ===== Helpers for multilingual lists ===== */
 function collectAUniMap(node){
   if(!node) return [];
   const a = Array.from(node.querySelectorAll('AUni'));
-  if(a.length) return a.map(x=>({ws: x.getAttribute('ws') || '', text: x.textContent.trim()}));
-  // fallback: Name with ws attribute directly or plain text (mono-lingual lists use ws on Name)
-  if(node.hasAttribute && node.hasAttribute('ws')) return [{ws: node.getAttribute('ws') || '', text: (node.textContent||'').trim()}];
-  const txt = (node.textContent||'').trim();
-  return txt ? [{ws:'', text: txt}] : [];
+  if(a.length) return a.map(x => ({ ws: x.getAttribute('ws') || '', text: x.textContent.trim() }));
+  // fallback: Name with ws attribute (mono) or plain text
+  if(node.hasAttribute && node.hasAttribute('ws')) return [{ ws: node.getAttribute('ws') || '', text: (node.textContent || '').trim() }];
+  const txt = (node.textContent || '').trim();
+  return txt ? [{ ws:'', text: txt }] : [];
 }
 
-/* ===== Build inline multilingual display honoring visibleLangs order ===== */
 function buildMultilingualInlineHTML(names, abbrs, visibleLangs){
-  // names: [{ws,text},...]; visibleLangs: ['en','id',...]
-  if(!names || !names.length) return '(unnamed)';
+  if(!names || names.length === 0) return '(unnamed)';
   const shown = visibleLangs.map(ws => names.find(n => n.ws === ws)).filter(Boolean);
   if(!shown.length) return '(none)';
   const main = shown[0];
   const others = shown.slice(1);
   let html = `<span class="translation-main">${escapeHtml(main.text)}</span>`;
-  if(others.length){
-    html += ' ' + others.map(o => `<span class="translation-others">${escapeHtml(o.text)}</span>`).join(' · ');
-  }
-  // abbreviations for visible langs
+  if(others.length) html += ' ' + others.map(o => `<span class="translation-others">${escapeHtml(o.text)}</span>`).join(' · ');
   if(abbrs && abbrs.length){
     const abv = visibleLangs.map(ws => (abbrs.find(a => a.ws === ws) || {}).text).filter(Boolean);
     if(abv.length) html += ` <span class="small-muted">[${abv.map(escapeHtml).join(' / ')}]</span>`;
@@ -502,7 +522,7 @@ function renderPhonologyView(xmlDoc){
     table.appendChild(tbody);
     setDiv.appendChild(table);
 
-    // boundary markers (if any)
+    // boundary markers
     const bMarkers = Array.from(set.querySelectorAll(':scope > BoundaryMarkers PhBdryMarker')) || [];
     if(bMarkers.length){
       setDiv.appendChild(create('div', {cls:'section-title'}, 'Boundary Markers'));
@@ -551,7 +571,7 @@ function renderPhonologyView(xmlDoc){
     });
   }
 
-  // simple placeholders for other sections (Environments, Contexts, Rules)
+  // simple placeholders for Environments, Contexts, Rules
   const envs = Array.from(xmlDoc.getElementsByTagName('Environments') || []);
   envs.forEach(en => {
     const sec = create('div', {cls:'natclass'});
@@ -567,7 +587,7 @@ function renderPhonologyView(xmlDoc){
     container.appendChild(sec);
   });
 
-  // interactive behavior: click phoneme row -> highlight natclasses containing it
+  // interactive behavior: clicking phoneme rows highlights natural classes
   Object.keys(globalState.phonemeRowIds).forEach(pid => {
     const rid = globalState.phonemeRowIds[pid];
     const row = document.getElementById(rid);
@@ -594,7 +614,251 @@ function renderPhonologyView(xmlDoc){
   return container;
 }
 
-/* ===== Utilities ===== */
+/* ===== Wordforms export rendering (Card + Table + gloss language controls) ===== */
+function renderWordformsView(xmlDoc){
+  // root might be <wordforms> or something similar depending on export
+  const root = xmlDoc.getElementsByTagName('wordforms')[0] || xmlDoc.documentElement;
+  const container = create('div');
+  container.appendChild(create('div', {cls:'section-title'}, 'Wordforms'));
+
+  // collect all wordform nodes
+  // FieldWorks samples may use <wordform> children
+  const wfNodes = Array.from(root.getElementsByTagName('wordform'));
+  // fallback: maybe root contains <Wordform> nodes
+  if(wfNodes.length === 0){
+    const alt = Array.from(root.getElementsByTagName('WordForm')).concat(Array.from(root.getElementsByTagName('Wordform')));
+    if(alt.length) wfNodes.push(...alt);
+  }
+
+  // scan for gloss languages across all gloss elements
+  const glossElems = Array.from(xmlDoc.querySelectorAll('gloss[ws], gloss AUni[ws], glosses gloss[ws]')) // flexible
+    .concat(Array.from(xmlDoc.querySelectorAll('gloss'))); // fallback
+  const glossLangsSet = new Set();
+  glossElems.forEach(g => {
+    if(g.getAttribute && g.getAttribute('ws')) glossLangsSet.add(g.getAttribute('ws'));
+    else {
+      // also accept <gloss><AUni ws="..."> or similar
+      const auni = g.querySelector && g.querySelector('AUni[ws]');
+      if(auni) glossLangsSet.add(auni.getAttribute('ws'));
+    }
+  });
+  const glossLangs = Array.from(glossLangsSet);
+  glossLangs.sort((a,b)=> a.toLowerCase().includes('en')? -1 : a.localeCompare(b));
+
+  // load wordform prefs (view mode + gloss languages visibility)
+  const saved = loadJSON(WORDFORM_PREFS_KEY) || {};
+  let viewMode = saved.viewMode || 'card'; // 'card' or 'table'
+  let glossPrefs = saved.glossPrefs || {};
+  // init prefs from discovered glossLangs
+  glossLangs.forEach((ws,i) => {
+    if(typeof glossPrefs[ws] !== 'object') glossPrefs[ws] = { ws, visible: true, order: i };
+  });
+
+  // UI controls
+  const controls = create('div', {cls:'controls-inline'});
+  const viewToggle = create('button', {cls:'small-btn', title:'Toggle Card/Table view'}, viewMode === 'card' ? 'Switch to Table View 📋' : 'Switch to Card View 🗂️');
+  controls.appendChild(viewToggle);
+
+  // gloss language chooser (only shown in Table view)
+  const glossChooser = create('div', {cls:'small-muted'});
+  glossChooser.style.display = viewMode === 'table' ? 'block' : 'none';
+  glossChooser.style.paddingLeft = '8px';
+  glossChooser.style.marginLeft = '8px';
+  glossChooser.textContent = 'Gloss languages: ';
+  glossLangs.forEach(ws => {
+    const label = create('label');
+    label.style.marginRight = '8px';
+    const cb = create('input'); cb.type = 'checkbox'; cb.checked = glossPrefs[ws].visible; cb.dataset.ws = ws;
+    cb.addEventListener('change', () => {
+      glossPrefs[ws].visible = cb.checked; saveJSON(WORDFORM_PREFS_KEY, { viewMode, glossPrefs }); renderItems();
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(' ' + ws));
+    glossChooser.appendChild(label);
+  });
+
+  controls.appendChild(glossChooser);
+  container.appendChild(controls);
+
+  // search/filter input (helpful)
+  const searchRow = create('div', {cls:'small-muted'});
+  searchRow.style.marginTop = '8px';
+  searchRow.innerHTML = 'Filter: <input id="wf_search" placeholder="search form or gloss..." style="padding:4px;border-radius:4px;border:1px solid #ddd;margin-left:6px;">';
+  container.appendChild(searchRow);
+
+  const listArea = create('div');
+  listArea.style.marginTop = '8px';
+  container.appendChild(listArea);
+
+  // wire view toggle
+  viewToggle.addEventListener('click', ()=>{
+    viewMode = viewMode === 'card' ? 'table' : 'card';
+    saveJSON(WORDFORM_PREFS_KEY, { viewMode, glossPrefs });
+    viewToggle.textContent = viewMode === 'card' ? 'Switch to Table View 📋' : 'Switch to Card View 🗂️';
+    glossChooser.style.display = viewMode === 'table' ? 'block' : 'none';
+    renderItems();
+  });
+
+  // render items either card or table
+  function renderItems(){
+    listArea.innerHTML = '';
+    const q = (byId('wf_search')?.value || '').trim().toLowerCase();
+
+    // helper to collect form text, glosses, category, counts
+    function extractData(wf){
+      const forms = [];
+      // FieldWorks uses <form ws="..."> inside wordform — but samples vary. We'll be flexible.
+      const formNodes = Array.from(wf.querySelectorAll('form, Form, word'));
+      if(formNodes.length === 0){
+        // try direct text
+        const txt = (wf.textContent || '').trim();
+        if(txt) forms.push({ws:'', text: txt});
+      } else {
+        formNodes.forEach(fn => {
+          // look for AUni children if present
+          const aunis = fn.querySelectorAll && fn.querySelectorAll('AUni');
+          if(aunis && aunis.length){
+            aunis.forEach(a => forms.push({ ws: a.getAttribute('ws') || '', text: (a.textContent||'').trim() }));
+          } else {
+            const ws = fn.getAttribute && fn.getAttribute('ws') || '';
+            const t = (fn.textContent || '').trim();
+            if(t) forms.push({ ws, text: t });
+          }
+        });
+      }
+
+      // analyses -> gloss, category, counts
+      const analyses = Array.from(wf.querySelectorAll('analysis, Analysis'));
+      const glosses = []; // array of {ws,text}
+      const categories = [];
+      analyses.forEach(a => {
+        const gNodes = Array.from(a.querySelectorAll('gloss, Gloss'));
+        if(gNodes.length){
+          gNodes.forEach(gn => {
+            const aun = gn.querySelector && gn.querySelector('AUni[ws]');
+            if(aun) glosses.push({ ws: aun.getAttribute('ws') || '', text: (aun.textContent||'').trim() });
+            else {
+              const ws = gn.getAttribute && gn.getAttribute('ws') || '';
+              const t = (gn.textContent || '').trim();
+              if(t) glosses.push({ ws, text: t });
+            }
+          });
+        }
+        const cat = a.querySelector('category, Category')?.textContent?.trim();
+        if(cat) categories.push(cat);
+      });
+
+      // counts
+      const predicted = parseInt(wf.getAttribute('PredictedAnalyses') || wf.getAttribute('predictedanalyses') || wf.querySelector('PredictedAnalyses')?.textContent || '0') || 0;
+      const user = parseInt(wf.getAttribute('UserAnalyses') || wf.getAttribute('useranalyses') || wf.querySelector('UserAnalyses')?.textContent || '0') || 0;
+
+      return { forms, glosses, categories, predicted, user, node: wf };
+    }
+
+    const dataList = wfNodes.map(wf => extractData(wf));
+
+    // apply search filter: matches form text or any gloss text
+    const filtered = dataList.filter(d => {
+      if(!q) return true;
+      const formMatch = d.forms.some(f => (f.text||'').toLowerCase().includes(q));
+      const glossMatch = d.glosses.some(g => (g.text||'').toLowerCase().includes(q));
+      const catMatch = d.categories.some(c => (c||'').toLowerCase().includes(q));
+      return formMatch || glossMatch || catMatch;
+    });
+
+    if(viewMode === 'card'){
+      // Card view
+      filtered.forEach(d => {
+        const card = create('div', {cls:'wordform-card'});
+        const header = create('div', {cls:'wordform-header'});
+        const main = create('div');
+        const primaryForm = d.forms[0]?.text || '(no form)';
+        main.appendChild(create('div', {cls:'wordform-main'}, primaryForm));
+        main.appendChild(create('div', {cls:'wordform-meta'}, `Predicted: ${d.predicted} · User: ${d.user}`));
+        header.appendChild(main);
+        // small expand button (collapse/expand body)
+        const expBtn = create('button', {cls:'small-btn', title:'Toggle details'}, '▾');
+        header.appendChild(expBtn);
+        card.appendChild(header);
+
+        const body = create('div', {cls:'wordform-body'});
+        if(d.glosses.length === 0 && d.categories.length === 0){
+          body.appendChild(create('div', {cls:'small-muted'}, '— No analysis —'));
+        } else {
+          // group glosses by ws
+          const byWs = {};
+          d.glosses.forEach(g => { if(!byWs[g.ws]) byWs[g.ws] = []; byWs[g.ws].push(g.text); });
+          Object.keys(byWs).forEach(ws => {
+            const line = create('div');
+            line.innerHTML = `<strong>Gloss (${escapeHtml(ws)}):</strong> ${escapeHtml(byWs[ws].join('; '))}`;
+            body.appendChild(line);
+          });
+          if(d.categories.length){
+            body.appendChild(create('div', {}, `Category: ${escapeHtml(d.categories.join('; '))}`));
+          }
+        }
+        body.style.display = 'block';
+        expBtn.addEventListener('click', ()=> {
+          body.style.display = body.style.display === 'none' ? 'block' : 'none';
+          expBtn.textContent = expBtn.textContent === '▾' ? '▸' : '▾';
+        });
+        card.appendChild(body);
+        listArea.appendChild(card);
+      });
+    } else {
+      // Table view: show selected gloss columns based on glossPrefs
+      const visibleGlossLangs = glossLangs.filter(ws => glossPrefs[ws] && glossPrefs[ws].visible);
+      const table = create('table', {cls:'table-view'});
+      // build header
+      const thead = create('thead');
+      const headerRow = create('tr');
+      headerRow.appendChild(create('th', {}, 'Wordform'));
+      visibleGlossLangs.forEach(ws => headerRow.appendChild(create('th', {}, `Gloss (${ws})`)));
+      headerRow.appendChild(create('th', {}, 'Category'));
+      headerRow.appendChild(create('th', {}, 'Pred'));
+      headerRow.appendChild(create('th', {}, 'User'));
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      const tbody = create('tbody');
+      filtered.forEach(d => {
+        const tr = create('tr');
+        const primaryForm = d.forms[0]?.text || '(no form)';
+        tr.appendChild(create('td', {}, primaryForm));
+        visibleGlossLangs.forEach(ws => {
+          const text = d.glosses.filter(g=>g.ws === ws).map(g=>g.text).join('; ') || '—';
+          tr.appendChild(create('td', {}, text));
+        });
+        tr.appendChild(create('td', {}, d.categories.join('; ') || '—'));
+        tr.appendChild(create('td', {}, String(d.predicted)));
+        tr.appendChild(create('td', {}, String(d.user)));
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      listArea.appendChild(table);
+    }
+  }
+
+  // initial render
+  renderItems();
+
+  // wire search input
+  const searchInput = byId('wf_search');
+  if(searchInput){
+    searchInput.addEventListener('input', () => { renderItems(); });
+  }
+
+  // wire gloss chooser UI to persist prefs
+  // already wired by checkboxes earlier when created, but ensure persistence for viewMode state
+  // save viewMode & glossPrefs whenever changed
+  function persistWordformPrefs(){ saveJSON(WORDFORM_PREFS_KEY, { viewMode, glossPrefs }); }
+  // update glossPrefs reference to the variable used by event handlers above
+  // ensure glossPrefs is synced with UI checkbox states if user toggles view toggle
+  // done through event handlers above that call saveJSON directly.
+
+  return container;
+}
+
+/* ===== Utilities used by phonology rendering ===== */
 function pickAUni(node){
   if(!node) return '';
   const aunis = Array.from(node.querySelectorAll('AUni'));
@@ -607,6 +871,7 @@ function pickAUni(node){
   return aunis[0].textContent.trim();
 }
 
+/* ===== Click helpers ===== */
 function onPhonemeSymbolClick(phonId){
   const rowId = globalState.phonemeRowIds[phonId];
   if(!rowId){ alert('Phoneme entry not found: ' + phonId); return; }
@@ -622,7 +887,7 @@ function scrollToAndHighlight(rowId){
   setTimeout(()=> el.classList.remove('scroll-target'), 2200);
 }
 
-/* ===== Build standalone HTML for open/save (with escaped closing script tag) ===== */
+/* ===== Build standalone HTML (for open/save) — note escaped closing tag to avoid template literal issues ===== */
 function buildStandaloneHTML(){
   const render = byId('renderArea');
   const content = render.innerHTML;
@@ -673,17 +938,6 @@ ${content}
 </html>`;
   return doc;
 }
-
-/* ===== localStorage helpers for prefs ===== */
-function saveLangPrefs(obj){
-  try{ localStorage.setItem(LANG_PREFS_KEY, JSON.stringify(obj)); } catch(e){}
-}
-function loadLangPrefs(){
-  try{ const s = localStorage.getItem(LANG_PREFS_KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; }
-}
-function saveLangPrefs(prefs){ try{ localStorage.setItem(LANG_PREFS_KEY, JSON.stringify(prefs)); } catch(e){} }
-
-/* ===== End script ===== */
 </script>
 </body>
 </html>
