@@ -5,107 +5,124 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
+from collections import Counter
+import re
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 import logging
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def parse_cell(cell):
-    """Parse a cell to extract vernacular, gloss, and other content."""
+def parse_cell(cell, listref_counter: Counter | None = None):
+    """Parse a chart cell.
+
+    Output ordering rule (requested): gloss information (paired or grouped) must appear BEFORE any listRef code tokens.
+
+    Strategy:
+    1. Collect words and glosses first.
+    2. Collect literal (non-parenthesis) tokens encountered in <main>.
+    3. Collect listRef codes separately (do not interleave yet).
+    4. Build a combined string: WORD/GLOSS content + literals + listRef tokens at the end.
+
+    Mismatched counts (len(glosses) != len(words)) => emit words joined, then a single parenthetical group with all glosses.
+    Matched counts => emit each word with its gloss: word (gloss).
+    """
     main = cell.find('main')
     if main is None:
         return ''
 
-    # Get row number (for first column)
+    # Row number (special first column)
     rownum = main.find('rownum')
     if rownum is not None:
         return rownum.text or ''
 
-    # Get move marker (e.g., Preposed)
+    # Move marker
     move_mkr = main.find('moveMkr')
     if move_mkr is not None:
         return move_mkr.text or ''
 
-    # Get note (for Notes column)
+    # Note (for Notes column)
     note = main.find('note')
-    if note is not None and note.text:
-        return note.text
     if note is not None:
-        return ''  # Keep Notes column even if empty
+        return note.text or ''
 
-    # Get literal (e.g., ---)
-    lit = main.find('lit')
-    if lit is not None:
-        return lit.text or ''  # Preserve --- and other literals
+    # Gather content
+    words: list[str] = []
+    literal_tokens: list[str] = []
+    listref_tokens: list[str] = []
 
-    # Get vernacular words and glosses
-    words = main.findall('word')
-    glosses = cell.find('glosses')
-    gloss_texts = [g.text for g in glosses.findall('gloss')] if glosses is not None else []
+    glosses_elem = cell.find('glosses')
+    gloss_texts = [g.text for g in glosses_elem.findall('gloss')] if glosses_elem is not None else []
 
-    if not words:
+    for elem in list(main):
+        tag = elem.tag
+        text = (elem.text or '').strip() if elem.text else ''
+        if tag == 'word' and text:
+            words.append(text)
+        elif tag == 'lit':
+            if text in ('(', ')'):
+                # Ignore structural parentheses around listRef
+                continue
+            if text:
+                literal_tokens.append(text)
+        elif tag == 'listRef':
+            code = text
+            if listref_counter is not None and code:
+                listref_counter[code] += 1
+            if code:
+                listref_tokens.append(f'({code})')
+        # Other tags ignored here (handled earlier if needed)
+
+    content_segments: list[str] = []
+
+    if words and gloss_texts:
+        if len(gloss_texts) == len(words):
+            # Pair 1:1
+            paired = []
+            for w, g in zip(words, gloss_texts):
+                if w and g:
+                    paired.append(f"{w} ({g})")
+                elif w:
+                    paired.append(w)
+            if paired:
+                content_segments.append(' '.join(paired))
+        else:
+            # Mismatch: show words then grouped glosses
+            content_segments.append(' '.join(words))
+            content_segments.append(f"({ ' '.join(g for g in gloss_texts if g) })")
+    elif words:
+        content_segments.append(' '.join(words))
+    elif gloss_texts:
+        # No words but have glosses—rare; still show them
+        content_segments.append(f"({ ' '.join(g for g in gloss_texts if g) })")
+
+    # Add any literal tokens (they conceptually belong with lexical material before codes)
+    if literal_tokens:
+        content_segments.extend(literal_tokens)
+
+    # Finally append listRef tokens (ensures gloss info appears first)
+    if listref_tokens:
+        content_segments.extend(listref_tokens)
+
+    if not content_segments:
+        # Fallback: single literal child if present
+        lit = main.find('lit')
+        if lit is not None and lit.text:
+            return lit.text
         return ''
 
-    # Combine words and glosses
-    vernacular = ' '.join(word.text for word in words if word.text)
-    if gloss_texts and len(gloss_texts) == len(words):
-        gloss = ' '.join(gloss_texts)
-        return f"{vernacular} ({gloss})"
-    return vernacular
+    joined = ' '.join(seg for seg in content_segments if seg)
+    joined = re.sub(r'\s+\)', ')', joined)
+    joined = re.sub(r'\(\s+', '(', joined)
+    return joined
 
-def get_user_choice(root):
-    """Prompt user to choose analysis type using a dropdown list."""
-    logging.debug("Opening ChoiceDialog")
-    class ChoiceDialog(tk.Toplevel):
-        def __init__(self, parent):
-            super().__init__(parent)
-            logging.debug("Initializing ChoiceDialog")
-            self.title("Text Chart Analysis")
-            self.geometry("400x200")
-            self.resizable(False, False)
-            self.choice = None
+## Removed get_user_choice: script now always uses a single generic analysis column.
 
-            # Label
-            tk.Label(self, text="What do you want to do with this Text Chart?", wraplength=350).pack(pady=10)
-
-            # Dropdown
-            choices = [
-                "Analyze Clause Relationships (Including Clause Chains and Switch Reference)",
-                "Analyze Serial Verb Constructions and Other Clause-Internal Structure",
-                "Other/Custom"
-            ]
-            self.var = tk.StringVar(self)
-            self.var.set(choices[0])  # Default to first choice
-            dropdown = ttk.OptionMenu(self, self.var, choices[0], *choices)
-            dropdown.pack(pady=10)
-            logging.debug("Dropdown created with choices: %s", choices)
-
-            # Buttons
-            tk.Button(self, text="OK", command=self.on_ok).pack(pady=5)
-            tk.Button(self, text="Cancel", command=self.on_cancel).pack(pady=5)
-
-            # Log window display
-            logging.debug("ChoiceDialog displayed, waiting for user input")
-
-        def on_ok(self):
-            self.choice = self.var.get()
-            logging.debug("User selected: %s", self.choice)
-            self.destroy()
-
-        def on_cancel(self):
-            self.choice = None
-            logging.debug("User canceled")
-            self.destroy()
-
-    dialog = ChoiceDialog(root)
-    root.wait_window(dialog)
-    logging.debug("ChoiceDialog closed, returning choice: %s", dialog.choice)
-    return dialog.choice
-
-def convert_to_excel(input_file, output_file, analysis_choice):
-    logging.debug("Starting conversion with input: %s, output: %s, choice: %s", input_file, output_file, analysis_choice)
+def convert_to_excel(input_file, output_file):
+    analysis_choice = "Other/Custom"  # Forced default
+    logging.debug("Starting conversion with input: %s, output: %s (forced analysis choice: %s)", input_file, output_file, analysis_choice)
     
     # Parse the XML file
     try:
@@ -128,33 +145,9 @@ def convert_to_excel(input_file, output_file, analysis_choice):
         header_text = lit.text if lit is not None else ''
         main_headers.append((header_text, cols))
 
-    # Define analysis columns based on user choice
-    analysis_columns = []
-    if analysis_choice == "Analyze Clause Relationships (Including Clause Chains and Switch Reference)":
-        analysis_columns = [
-            "Dependent?",
-            "Subordinate?",
-            "Quotation?",
-            "Same/Different Subject w/ Next",
-            "Same/Different Subject w/ Main",
-            "Temporal Overlap",
-            "Related to: Next?/Main?",
-            "SSA Relationship"
-        ]
-        main_headers.insert(-1, ('', len(analysis_columns)))  # Empty header for analysis columns
-    elif analysis_choice == "Analyze Serial Verb Constructions and Other Clause-Internal Structure":
-        analysis_columns = [
-            "Multiple verbs in Clause?",
-            "Argument Shared",
-            "Symmetry",
-            "Symmetrical Semantic Function",
-            "Asymmetrical Semantic Function",
-            "Tense/Aspect/Modality"
-        ]
-        main_headers.insert(-1, ('', len(analysis_columns)))  # Empty header for analysis columns
-    else:  # Other/Custom
-        analysis_columns = ["Add Analysis Columns Here"]
-        main_headers.insert(-1, ('Add Analysis Columns Here', 1))
+    # Always use the simplified generic analysis placeholder
+    analysis_columns = ["Add Analysis Columns Here"]
+    main_headers.insert(-1, ('Add Analysis Columns Here', 1))
 
     # Extract sub-headers from title2 row, starting from cell[1] to cell[9]
     sub_headers = ['', 'Row']  # Blank column and Row
@@ -170,21 +163,37 @@ def convert_to_excel(input_file, output_file, analysis_choice):
         logging.error("Header column mismatch: %d in title1, %d in title2", total_cols, len(sub_headers))
         raise Exception(f"Header column mismatch: {total_cols} columns in title1 (including blank and new), {len(sub_headers)} in title2")
 
+    # Collect listRef codes across the chart for legend + include in parsing
+    listref_counter = Counter()
+
     # Extract data rows
     data = []
     for row in chart.findall('row[@type="normal"]'):
-        row_data = ['']  # Blank column
+        row_data = ['']  # Blank column aligns with first empty header slot
         row_cells = row.findall('cell')
-        for cell in row_cells[:-1]:  # Process all cells except the last (Notes)
-            if int(cell.get('cols', 1)) != 1:
-                logging.error("Data row cell with cols != 1: %s", cell.get('cols'))
-                raise Exception(f"Data row cell with cols != 1: {cell.get('cols')}")
-            row_data.append(parse_cell(cell))
-        row_data.extend([''] * len(analysis_columns))  # Add empty cells for analysis columns
-        row_data.append(parse_cell(row_cells[-1]))  # Notes
-        if len(row_data) != len(sub_headers):
-            logging.error("Data row has %d cells, expected %d", len(row_data), len(sub_headers))
-            raise Exception(f"Data row has {len(row_data)} cells, expected {len(sub_headers)}")
+        if not row_cells:
+            continue
+        # Treat the last cell as Notes (consistent with earlier logic)
+        body_cells = row_cells[:-1]
+        notes_cell = row_cells[-1]
+        for cell in body_cells:
+            span = int(cell.get('cols', 1))
+            value = parse_cell(cell, listref_counter)
+            # Put value in first column of span, blanks in remaining to preserve alignment
+            row_data.append(value)
+            if span > 1:
+                row_data.extend([''] * (span - 1))
+        # Analysis placeholder columns
+        row_data.extend([''] * len(analysis_columns))
+        # Notes
+        row_data.append(parse_cell(notes_cell, listref_counter))
+        # Trim or pad if off due to unexpected spans
+        if len(row_data) > len(sub_headers):
+            logging.warning("Row %s produced %d columns; trimming to %d", row.get('id'), len(row_data), len(sub_headers))
+            row_data = row_data[:len(sub_headers)]
+        elif len(row_data) < len(sub_headers):
+            logging.warning("Row %s produced %d columns; padding to %d", row.get('id'), len(row_data), len(sub_headers))
+            row_data.extend([''] * (len(sub_headers) - len(row_data)))
         data.append(row_data)
 
     # Create DataFrame without headers
@@ -309,21 +318,7 @@ def convert_to_excel(input_file, output_file, analysis_choice):
             bottom=cell.border.bottom
         )
 
-    # Apply data validation for Choice 2
-    if analysis_choice == "Analyze Serial Verb Constructions and Other Clause-Internal Structure":
-        # Find column indices for "Argument Shared" and "Symmetry"
-        arg_shared_col = sub_headers.index("Argument Shared") + 1  # 1-based index
-        symmetry_col = sub_headers.index("Symmetry") + 1  # 1-based index
-
-        # Data validation for "Argument Shared"
-        dv1 = DataValidation(type="list", formula1='"All,Subject,Switch-Function"', allow_blank=True)
-        dv1.add(f"{get_column_letter(arg_shared_col)}7:{get_column_letter(arg_shared_col)}{ws.max_row}")
-        ws.add_data_validation(dv1)
-
-        # Data validation for "Symmetry"
-        dv2 = DataValidation(type="list", formula1='"Symmetrical,Asymmetrical,Both"', allow_blank=True)
-        dv2.add(f"{get_column_letter(symmetry_col)}7:{get_column_letter(symmetry_col)}{ws.max_row}")
-        ws.add_data_validation(dv2)
+    # (Removed conditional data validation; not relevant for single generic analysis column.)
 
     # Adjust column widths, handling merged cells
     for col_idx in range(1, ws.max_column + 1):
@@ -344,6 +339,28 @@ def convert_to_excel(input_file, output_file, analysis_choice):
     # Apply auto-filter using sub-header row as header, excluding column A
     ws.auto_filter.ref = f"B6:{get_column_letter(ws.max_column)}{ws.max_row}"
 
+    # Add Legend sheet for listRef codes (if any captured)
+    try:
+        if 'Legend' in wb.sheetnames:
+            legend_ws = wb['Legend']
+            # Clear existing (simple approach)
+            for row in legend_ws['A1:Z999']:
+                for cell in row:
+                    cell.value = None
+        else:
+            legend_ws = wb.create_sheet(title='Legend')
+        legend_ws['A1'] = 'Code'
+        legend_ws['B1'] = 'Count'
+        legend_ws['A1'].font = Font(bold=True)
+        legend_ws['B1'].font = Font(bold=True)
+        for idx, (code, count) in enumerate(sorted(listref_counter.items()), start=2):
+            legend_ws.cell(row=idx, column=1, value=code)
+            legend_ws.cell(row=idx, column=2, value=count)
+        legend_ws.column_dimensions['A'].width = 12
+        legend_ws.column_dimensions['B'].width = 8
+    except Exception as e:
+        logging.warning("Failed to add Legend sheet: %s", e)
+
     # Save the formatted workbook
     wb.save(output_file)
     logging.debug("Excel file saved: %s", output_file)
@@ -354,13 +371,7 @@ def main():
     root.withdraw()  # Hide the main Tkinter window
 
     try:
-        # Prompt user for analysis choice
-        logging.debug("Prompting for analysis choice")
-        analysis_choice = get_user_choice(root)
-        if analysis_choice is None:
-            logging.info("No analysis choice selected. Exiting.")
-            messagebox.showinfo("Info", "No analysis choice selected. Exiting.")
-            return
+        # No analysis choice prompt (simplified UX)
 
         # Open file dialog for input file
         logging.debug("Opening file dialog for input")
@@ -373,21 +384,35 @@ def main():
             messagebox.showinfo("Info", "No input file selected. Exiting.")
             return
 
-        # Open file dialog for output file
-        logging.debug("Opening file dialog for output")
-        output_file = filedialog.asksaveasfilename(
-            title="Save Output Excel File",
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
-        )
-        if not output_file:
-            logging.info("No output file selected. Exiting.")
-            messagebox.showinfo("Info", "No output file selected. Exiting.")
-            return
+        # Open file dialog for output file with overwrite confirmation
+        while True:
+            logging.debug("Opening file dialog for output")
+            output_file = filedialog.asksaveasfilename(
+                title="Save Output Excel File",
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+            )
+            if not output_file:
+                logging.info("No output file selected. Exiting.")
+                messagebox.showinfo("Info", "No output file selected. Exiting.")
+                return
+            if os.path.exists(output_file):
+                logging.debug("Selected output file exists: %s", output_file)
+                overwrite = messagebox.askyesno(
+                    "Confirm Overwrite",
+                    f"The file:\n{output_file}\nalready exists. Overwrite?"
+                )
+                if overwrite:
+                    break
+                else:
+                    logging.debug("User declined overwrite; re-prompting for filename")
+                    continue  # Loop back for a new filename
+            else:
+                break  # File does not exist; safe to proceed
 
         # Convert the file
         logging.debug("Starting conversion")
-        convert_to_excel(input_file, output_file, analysis_choice)
+        convert_to_excel(input_file, output_file)
         messagebox.showinfo("Success", f"Excel file '{output_file}' has been created successfully.")
 
     except Exception as e:
