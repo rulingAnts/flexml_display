@@ -7,6 +7,13 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from collections import Counter
 import re
+try:
+    from openpyxl.cell.rich_text import CellRichText, TextBlock
+    from openpyxl.cell.text import InlineFont
+except ImportError:  # Fallback if openpyxl version lacks rich text support
+    CellRichText = None
+    TextBlock = None
+    InlineFont = None
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import logging
@@ -15,7 +22,12 @@ import os
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def parse_cell(cell, listref_counter: Counter | None = None):
+# Feature toggle: disable rich text if Excel repair warnings persist
+ENABLE_RICH_TEXT = True
+# Placeholder shown when a <listRef> element has no text (user hasn't configured abbreviation)
+LISTREF_EMPTY_PLACEHOLDER = '?'  # Change to e.g. 'Ø' or 'UNDEF' if preferred
+
+def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None = None):
     """Parse a chart cell.
 
     Output ordering rule (requested): gloss information (paired or grouped) must appear BEFORE any listRef code tokens.
@@ -36,22 +48,31 @@ def parse_cell(cell, listref_counter: Counter | None = None):
     # Row number (special first column)
     rownum = main.find('rownum')
     if rownum is not None:
-        return rownum.text or ''
+        text = rownum.text or ''
+        if runs is not None:
+            runs.append({'text': text, 'type': 'rownum'})
+        return text
 
     # Move marker
     move_mkr = main.find('moveMkr')
     if move_mkr is not None:
-        return move_mkr.text or ''
+        text = move_mkr.text or ''
+        if runs is not None:
+            runs.append({'text': text, 'type': 'move'})
+        return text
 
     # Note (for Notes column)
     note = main.find('note')
     if note is not None:
-        return note.text or ''
+        text = note.text or ''
+        if runs is not None:
+            runs.append({'text': text, 'type': 'note'})
+        return text
 
     # Gather content
     words: list[str] = []
     literal_tokens: list[str] = []
-    listref_tokens: list[str] = []
+    listref_codes: list[str] = []
 
     glosses_elem = cell.find('glosses')
     gloss_texts = [g.text for g in glosses_elem.findall('gloss')] if glosses_elem is not None else []
@@ -69,47 +90,98 @@ def parse_cell(cell, listref_counter: Counter | None = None):
                 literal_tokens.append(text)
         elif tag == 'listRef':
             code = text
+            if not code:
+                code = LISTREF_EMPTY_PLACEHOLDER
             if listref_counter is not None and code:
                 listref_counter[code] += 1
             if code:
-                listref_tokens.append(f'({code})')
+                listref_codes.append(code)
         # Other tags ignored here (handled earlier if needed)
 
     content_segments: list[str] = []
 
     if words and gloss_texts:
         if len(gloss_texts) == len(words):
-            # Pair 1:1
-            paired = []
+            # Pair 1:1 produce runs per word and gloss separately
+            word_gloss_segments = []
             for w, g in zip(words, gloss_texts):
-                if w and g:
-                    paired.append(f"{w} ({g})")
-                elif w:
-                    paired.append(w)
-            if paired:
-                content_segments.append(' '.join(paired))
+                if w:
+                    word_gloss_segments.append({'text': w, 'type': 'word'})
+                if g:
+                    word_gloss_segments.append({'text': ' (', 'type': 'punct'})
+                    word_gloss_segments.append({'text': g, 'type': 'gloss'})
+                    word_gloss_segments.append({'text': ')', 'type': 'punct'})
+            if word_gloss_segments:
+                content_segments.append(''.join(seg['text'] for seg in word_gloss_segments))
+                if runs is not None:
+                    runs.extend(word_gloss_segments)
         else:
-            # Mismatch: show words then grouped glosses
-            content_segments.append(' '.join(words))
-            content_segments.append(f"({ ' '.join(g for g in gloss_texts if g) })")
+            # Mismatch: words then grouped gloss bundle
+            if words:
+                content_segments.append(' '.join(words))
+                if runs is not None:
+                    for i, w in enumerate(words):
+                        if i:
+                            runs.append({'text': ' ', 'type': 'space'})
+                        runs.append({'text': w, 'type': 'word'})
+            gloss_bundle = [g for g in gloss_texts if g]
+            if gloss_bundle:
+                group_text = '(' + ' '.join(gloss_bundle) + ')'
+                content_segments.append(group_text)
+                if runs is not None:
+                    runs.append({'text': ' ', 'type': 'space'}) if runs and runs[-1]['text'] != ' ' else None
+                    runs.append({'text': '(', 'type': 'punct'})
+                    for i, g in enumerate(gloss_bundle):
+                        if i:
+                            runs.append({'text': ' ', 'type': 'space'})
+                        runs.append({'text': g, 'type': 'gloss'})
+                    runs.append({'text': ')', 'type': 'punct'})
     elif words:
         content_segments.append(' '.join(words))
+        if runs is not None:
+            for i, w in enumerate(words):
+                if i:
+                    runs.append({'text': ' ', 'type': 'space'})
+                runs.append({'text': w, 'type': 'word'})
     elif gloss_texts:
-        # No words but have glosses—rare; still show them
-        content_segments.append(f"({ ' '.join(g for g in gloss_texts if g) })")
+        # No words but have glosses—rare; group them
+        grouped = '(' + ' '.join(g for g in gloss_texts if g) + ')'
+        content_segments.append(grouped)
+        if runs is not None:
+            runs.append({'text': '(', 'type': 'punct'})
+            for i, g in enumerate(g for g in gloss_texts if g):
+                if i:
+                    runs.append({'text': ' ', 'type': 'space'})
+                runs.append({'text': g, 'type': 'gloss'})
+            runs.append({'text': ')', 'type': 'punct'})
 
     # Add any literal tokens (they conceptually belong with lexical material before codes)
     if literal_tokens:
         content_segments.extend(literal_tokens)
+        if runs is not None:
+            for lit_token in literal_tokens:
+                if runs and not runs[-1]['text'].endswith(' '):
+                    runs.append({'text': ' ', 'type': 'space'})
+                runs.append({'text': lit_token, 'type': 'literal'})
 
     # Finally append listRef tokens (ensures gloss info appears first)
-    if listref_tokens:
-        content_segments.extend(listref_tokens)
+    if listref_codes:
+        if runs is not None:
+            for code in listref_codes:
+                # Append a space to previous run text instead of a separate space run to reduce rich text fragmentation
+                if runs and not runs[-1]['text'].endswith(' '):
+                    runs[-1]['text'] += ' '
+                runs.append({'text': '(', 'type': 'code_punct'})
+                runs.append({'text': code, 'type': 'code'})
+                runs.append({'text': ')', 'type': 'code_punct'})
+        content_segments.extend(f'({c})' for c in listref_codes)
 
     if not content_segments:
         # Fallback: single literal child if present
         lit = main.find('lit')
         if lit is not None and lit.text:
+            if runs is not None:
+                runs.append({'text': lit.text, 'type': 'literal'})
             return lit.text
         return ''
 
@@ -168,33 +240,53 @@ def convert_to_excel(input_file, output_file):
 
     # Extract data rows
     data = []
+    cell_runs_matrix: list[list[list[dict] | None]] = []  # Parallel to data rows; each entry a list of runs per column or None
+    break_flags: list[str | None] = []  # 'sent', 'para', or None per data row order
     for row in chart.findall('row[@type="normal"]'):
-        row_data = ['']  # Blank column aligns with first empty header slot
+        row_data = ['']  # Blank leading column
+        row_runs: list[list[dict] | None] = [None]
         row_cells = row.findall('cell')
         if not row_cells:
             continue
-        # Treat the last cell as Notes (consistent with earlier logic)
         body_cells = row_cells[:-1]
         notes_cell = row_cells[-1]
         for cell in body_cells:
             span = int(cell.get('cols', 1))
-            value = parse_cell(cell, listref_counter)
-            # Put value in first column of span, blanks in remaining to preserve alignment
+            runs_holder: list[dict] = []
+            value = parse_cell(cell, listref_counter, runs=runs_holder)
             row_data.append(value)
+            row_runs.append(runs_holder)
             if span > 1:
-                row_data.extend([''] * (span - 1))
-        # Analysis placeholder columns
+                for _ in range(span - 1):
+                    row_data.append('')
+                    row_runs.append(None)
+        # Analysis placeholder columns (no runs)
         row_data.extend([''] * len(analysis_columns))
+        row_runs.extend([None] * len(analysis_columns))
         # Notes
-        row_data.append(parse_cell(notes_cell, listref_counter))
-        # Trim or pad if off due to unexpected spans
+        note_runs: list[dict] = []
+        note_val = parse_cell(notes_cell, listref_counter, runs=note_runs)
+        row_data.append(note_val)
+        row_runs.append(note_runs)
+        # Normalize length
         if len(row_data) > len(sub_headers):
             logging.warning("Row %s produced %d columns; trimming to %d", row.get('id'), len(row_data), len(sub_headers))
             row_data = row_data[:len(sub_headers)]
+            row_runs = row_runs[:len(sub_headers)]
         elif len(row_data) < len(sub_headers):
+            pad = len(sub_headers) - len(row_data)
             logging.warning("Row %s produced %d columns; padding to %d", row.get('id'), len(row_data), len(sub_headers))
-            row_data.extend([''] * (len(sub_headers) - len(row_data)))
+            row_data.extend([''] * pad)
+            row_runs.extend([None] * pad)
         data.append(row_data)
+        cell_runs_matrix.append(row_runs)
+        # Determine break type for this row
+        if row.get('endPara') == 'true':
+            break_flags.append('para')
+        elif row.get('endSent') == 'true':
+            break_flags.append('sent')
+        else:
+            break_flags.append(None)
 
     # Create DataFrame without headers
     try:
@@ -318,7 +410,91 @@ def convert_to_excel(input_file, output_file):
             bottom=cell.border.bottom
         )
 
+    # Apply sentence / paragraph break bottom borders inside the chart
+    # Data rows start at Excel row 7; iterate over break_flags aligned to data order
+    for idx, flag in enumerate(break_flags):
+        if not flag:
+            continue
+        excel_row = 7 + idx
+        # Choose border style
+        if flag == 'para':
+            bottom_side = Side(style='thick')
+        else:  # 'sent'
+            # Upgraded from thin to medium for greater visual separation
+            bottom_side = Side(style='medium', color='000000')
+        for col_idx in range(2, ws.max_column + 1):  # Columns B .. last (exclude leading blank col A)
+            cell = ws.cell(row=excel_row, column=col_idx)
+            cell.border = Border(
+                left=cell.border.left,
+                right=cell.border.right,
+                top=cell.border.top,
+                bottom=bottom_side
+            )
+
     # (Removed conditional data validation; not relevant for single generic analysis column.)
+
+    # Apply rich text styling to distinguish words / glosses / codes if supported
+    if ENABLE_RICH_TEXT and CellRichText is not None and InlineFont is not None:
+        gloss_color = 'FF1D4ED8'  # Blue
+        code_color = 'FFD97706'   # Orange
+        literal_color = 'FF4B5563'  # Gray
+
+        def style_signature(run_type: str):
+            if run_type == 'gloss':
+                return ('gloss', gloss_color, True, False)
+            if run_type in ('code', 'code_punct'):
+                return ('code', code_color, False, True)
+            if run_type == 'literal':
+                return ('literal', literal_color, False, False)
+            if run_type == 'punct':
+                return ('gloss_punct', gloss_color, False, False)
+            return ('default', None, False, False)
+
+        def merge_runs(runs):
+            merged = []
+            for r in runs:
+                txt = r['text']
+                if not txt:
+                    continue
+                sig = style_signature(r['type'])
+                if merged and style_signature(merged[-1]['type']) == sig:
+                    merged[-1]['text'] += txt
+                else:
+                    merged.append({'text': txt, 'type': r['type']})
+            return merged
+
+        for r_index, row_runs in enumerate(cell_runs_matrix, start=7):
+            for c_index, runs in enumerate(row_runs, start=1):
+                if not runs:
+                    continue
+                cell = ws.cell(row=r_index, column=c_index)
+                if cell.value in (None, ''):
+                    continue
+                compact = merge_runs(runs)
+                # Skip overly complex cells to avoid Excel repair
+                if len(compact) > 60:
+                    logging.debug("Skipping rich text in %s%d (runs=%d)", get_column_letter(c_index), r_index, len(compact))
+                    continue
+                rich = CellRichText()
+                for run in compact:
+                    txt = run['text']
+                    rtype = run['type']
+                    _, color, italic, bold = style_signature(rtype)
+                    try:
+                        inline_font = InlineFont(color=color, i=italic, b=bold)
+                    except Exception:
+                        inline_font = InlineFont()
+                    try:
+                        rich.append(TextBlock(inline_font, txt))
+                    except Exception as e:
+                        logging.debug("Append TextBlock failed %s%d: %s", get_column_letter(c_index), r_index, e)
+                try:
+                    cell.data_type = 'inlineStr'
+                    cell.value = rich
+                except Exception as e:
+                    logging.debug("Rich text assignment failed %s%d: %s", get_column_letter(c_index), r_index, e)
+    else:
+        logging.info("Rich text formatting not supported by this openpyxl version; skipping token-level coloring.")
 
     # Adjust column widths, handling merged cells
     for col_idx in range(1, ws.max_column + 1):
