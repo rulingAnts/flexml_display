@@ -4,6 +4,9 @@
 # Large Files
 dist
 
+# Python example code for comparison
+python
+
 # Logs
 logs
 *.log
