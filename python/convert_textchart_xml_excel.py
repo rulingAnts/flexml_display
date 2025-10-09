@@ -7,13 +7,6 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from collections import Counter
 import re
-try:
-    from openpyxl.cell.rich_text import CellRichText, TextBlock
-    from openpyxl.cell.text import InlineFont
-except ImportError:  # Fallback if openpyxl version lacks rich text support
-    CellRichText = None
-    TextBlock = None
-    InlineFont = None
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import logging
@@ -22,14 +15,32 @@ import os
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Feature toggle: disable rich text if Excel repair warnings persist
-ENABLE_RICH_TEXT = True
 # Placeholder shown when a <listRef> element has no text (user hasn't configured abbreviation)
 LISTREF_EMPTY_PLACEHOLDER = '?'  # Change to e.g. 'Ø' or 'UNDEF' if preferred
-CLAUSE_FONT_COLOR = 'FF065F73'      # Dark blue-green for clause marker text
-CLAUSE_FILL_COLOR = 'FFE0F5F4'      # Light blue-green fill for clause rows
 
-def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None = None, clause_targets: list | None = None):
+# Clause type style map (fill only; text stays black)
+CLAUSE_STYLE_MAP = {
+    'normal':   {'fill': None},        # no shading for normal
+    'dependent':{'fill': 'FFEDE9FE'},  # purple
+    'speech':   {'fill': 'FFFEF3C7'},  # amber
+    'song':     {'fill': 'FFFCE7F3'},  # rose
+}
+
+def clause_style_for_row_type(row_type: str | None) -> str:
+    key = (row_type or '').lower()
+    if key in CLAUSE_STYLE_MAP:
+        return key
+    # Fuzzy mapping for variant labels
+    if 'depend' in key:
+        return 'dependent'
+    if 'speech' in key:
+        return 'speech'
+    if 'song' in key or 'poem' in key or 'hymn' in key:
+        return 'song'
+    # Treat unknown non-title rows as normal/independent
+    return 'normal'
+
+def parse_cell(cell, listref_counter: Counter | None = None, clause_targets: list | None = None):
     """Parse a chart cell.
 
     Output ordering rule (requested): gloss information (paired or grouped) must appear BEFORE any listRef code tokens.
@@ -57,206 +68,89 @@ def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None =
     rownum = main.find('rownum')
     if rownum is not None:
         text = rownum.text or ''
-        if runs is not None:
-            runs.append({'text': text, 'type': 'rownum'})
         return text
 
     # Move marker
     move_mkr = main.find('moveMkr')
     if move_mkr is not None:
         text = move_mkr.text or ''
-        if runs is not None:
-            runs.append({'text': text, 'type': 'move'})
         return text
 
     # Note (for Notes column)
     note = main.find('note')
     if note is not None:
         text = note.text or ''
-        if runs is not None:
-            runs.append({'text': text, 'type': 'note'})
         return text
 
-    # Gather content
-    words: list[str] = []
-    literal_tokens: list[str] = []
-    listref_codes: list[str] = []
-    clause_codes: list[str] = []
-
+    # Pre-scan words and glosses for pairing
+    words_all = [e.text.strip() for e in list(main) if e.tag == 'word' and e.text]
     glosses_elem = cell.find('glosses')
     gloss_texts = [g.text for g in glosses_elem.findall('gloss')] if glosses_elem is not None else []
 
+    # Build a token stream from main children respecting <lit> spacing flags
+    tokens: list[dict] = []  # each: {'text': str, 'type': str, 'nsb': bool, 'nsa': bool}
+    word_index = 0
     for elem in list(main):
         tag = elem.tag
         text = (elem.text or '').strip() if elem.text else ''
-        if tag == 'word' and text:
-            words.append(text)
-        elif tag == 'lit':
-            if text in ('(', ')'):
-                # Ignore structural parentheses around listRef
-                continue
-            if text:
-                literal_tokens.append(text)
+        # Allow empty <lit>, <listRef> (so we can show placeholder), and <clauseMkr> (target attr)
+        if not text and tag not in ('lit', 'listRef', 'clauseMkr'):
+            continue
+        if tag == 'lit':
+            lit_text = (elem.text or '')
+            nsb = (elem.get('noSpaceBefore') == 'true')
+            nsa = (elem.get('noSpaceAfter') == 'true')
+            tokens.append({'text': lit_text, 'type': 'literal', 'nsb': nsb, 'nsa': nsa})
+        elif tag == 'word':
+            tokens.append({'text': text, 'type': 'word', 'nsb': False, 'nsa': False})
+            # If 1:1 pairing, add gloss immediately after word
+            if gloss_texts and len(words_all) == len(gloss_texts) and word_index < len(gloss_texts):
+                g = gloss_texts[word_index]
+                if g:
+                    tokens.append({'text': '(', 'type': 'literal', 'nsb': True, 'nsa': True})
+                    tokens.append({'text': g, 'type': 'gloss', 'nsb': False, 'nsa': False})
+                    tokens.append({'text': ')', 'type': 'literal', 'nsb': True, 'nsa': False})
+            word_index += 1
         elif tag == 'listRef':
-            code = text
-            if not code:
-                code = LISTREF_EMPTY_PLACEHOLDER
+            # Prefer element text; fall back to common attributes like 'abbr' or 'code'
+            code = text or elem.get('abbr') or elem.get('code') or LISTREF_EMPTY_PLACEHOLDER
             if listref_counter is not None and code:
                 listref_counter[code] += 1
-            if code:
-                listref_codes.append(code)
+            tokens.append({'text': code, 'type': 'code', 'nsb': False, 'nsa': False})
         elif tag == 'clauseMkr':
             target = elem.get('target') or text or ''
+            if target and clause_targets is not None:
+                clause_targets.append(target)
+            # Render clause marker as its text; brackets/dashes come from adjacent <lit>
             if target:
-                clause_codes.append(target)
-                if clause_targets is not None:
-                    clause_targets.append(target)
-        # Other tags ignored here (handled earlier if needed)
+                tokens.append({'text': target, 'type': 'clause', 'nsb': False, 'nsa': False})
 
-    content_segments: list[str] = []
+    # If glosses exist but not 1:1, append grouped gloss bundle at end
+    if gloss_texts and len(words_all) != len(gloss_texts):
+        joined = ' '.join(g for g in gloss_texts if g)
+        if joined:
+            tokens.append({'text': '(', 'type': 'literal', 'nsb': False, 'nsa': True})
+            tokens.append({'text': joined, 'type': 'gloss', 'nsb': False, 'nsa': False})
+            tokens.append({'text': ')', 'type': 'literal', 'nsb': True, 'nsa': False})
 
-    if words and gloss_texts:
-        if len(gloss_texts) == len(words):
-            # Pair 1:1 produce runs per word and gloss separately
-            word_gloss_segments = []
-            for w, g in zip(words, gloss_texts):
-                if w:
-                    word_gloss_segments.append({'text': w, 'type': 'word'})
-                if g:
-                    word_gloss_segments.append({'text': ' (', 'type': 'punct'})
-                    word_gloss_segments.append({'text': g, 'type': 'gloss'})
-                    word_gloss_segments.append({'text': ')', 'type': 'punct'})
-            if word_gloss_segments:
-                content_segments.append(''.join(seg['text'] for seg in word_gloss_segments))
-                if runs is not None:
-                    runs.extend(word_gloss_segments)
-        else:
-            # Mismatch: words then grouped gloss bundle
-            if words:
-                content_segments.append(' '.join(words))
-                if runs is not None:
-                    for i, w in enumerate(words):
-                        if i:
-                            runs.append({'text': ' ', 'type': 'space'})
-                        runs.append({'text': w, 'type': 'word'})
-            gloss_bundle = [g for g in gloss_texts if g]
-            if gloss_bundle:
-                group_text = '(' + ' '.join(gloss_bundle) + ')'
-                content_segments.append(group_text)
-                if runs is not None:
-                    runs.append({'text': ' ', 'type': 'space'}) if runs and runs[-1]['text'] != ' ' else None
-                    runs.append({'text': '(', 'type': 'punct'})
-                    for i, g in enumerate(gloss_bundle):
-                        if i:
-                            runs.append({'text': ' ', 'type': 'space'})
-                        runs.append({'text': g, 'type': 'gloss'})
-                    runs.append({'text': ')', 'type': 'punct'})
-    elif words:
-        content_segments.append(' '.join(words))
-        if runs is not None:
-            for i, w in enumerate(words):
-                if i:
-                    runs.append({'text': ' ', 'type': 'space'})
-                runs.append({'text': w, 'type': 'word'})
-    elif gloss_texts:
-        # No words but have glosses—rare; group them
-        grouped = '(' + ' '.join(g for g in gloss_texts if g) + ')'
-        content_segments.append(grouped)
-        if runs is not None:
-            runs.append({'text': '(', 'type': 'punct'})
-            for i, g in enumerate(g for g in gloss_texts if g):
-                if i:
-                    runs.append({'text': ' ', 'type': 'space'})
-                runs.append({'text': g, 'type': 'gloss'})
-            runs.append({'text': ')', 'type': 'punct'})
+    # Now assemble string with spacing rules
+    out_parts: list[str] = []
+    prev_nsa = False
+    for i, t in enumerate(tokens):
+        txt = t['text']
+        if not txt:
+            continue
+        nsb = t.get('nsb', False)
+        nsa = t.get('nsa', False)
+        # Decide spacing: insert space iff previous did not set noSpaceAfter and current did not set noSpaceBefore
+        if out_parts:
+            if not prev_nsa and not nsb:
+                out_parts.append(' ')
+        out_parts.append(txt)
+        prev_nsa = nsa
 
-    # Add any literal tokens (they conceptually belong with lexical material before codes)
-    if literal_tokens:
-        content_segments.extend(literal_tokens)
-        if runs is not None:
-            for lit_token in literal_tokens:
-                if runs and not runs[-1]['text'].endswith(' '):
-                    runs.append({'text': ' ', 'type': 'space'})
-                runs.append({'text': lit_token, 'type': 'literal'})
-
-    # Insert clause marker (after lexical/gloss & literals, before listRef codes) with smarter handling
-    if clause_codes:
-        # Remove bracket/dash literal tokens that would duplicate our synthesized marker
-        literal_tokens = [t for t in literal_tokens if t not in ('[', ']', '-')]
-
-        def parse_code(code: str):
-            import re as _re
-            m = _re.match(r'^(\d+)([A-Za-z]?)$', code)
-            if not m:
-                return None
-            num = int(m.group(1))
-            letter = m.group(2)
-            # Map '' -> 0, 'a'->1, 'b'->2 ... case-insensitive
-            letter_val = (ord(letter.lower()) - 96) if letter else 0
-            return (num, letter_val)
-
-        def is_contiguous(codes: list[str]) -> bool:
-            parsed = [parse_code(c) for c in codes]
-            if any(p is None for p in parsed):
-                return False
-            for (a_num, a_let), (b_num, b_let) in zip(parsed, parsed[1:]):
-                # Linearize: value = number * 100 + letter_val (letter_val small)
-                a_val = a_num * 100 + a_let
-                b_val = b_num * 100 + b_let
-                if b_val - a_val != 1:
-                    return False
-            return True if len(codes) > 1 else True
-
-        display_body: str
-        if len(clause_codes) == 1:
-            display_body = clause_codes[0]
-            clause_run_pattern = [('clause', clause_codes[0])]
-        else:
-            if is_contiguous(clause_codes):
-                display_body = f"{clause_codes[0]}-{clause_codes[-1]}"
-                clause_run_pattern = [('clause', clause_codes[0]), ('clause_punct', '-'), ('clause', clause_codes[-1])]
-            else:
-                display_body = ','.join(clause_codes)
-                clause_run_pattern = []
-                for i, ccode in enumerate(clause_codes):
-                    if i:
-                        clause_run_pattern.append(('clause_punct', ','))
-                    clause_run_pattern.append(('clause', ccode))
-        clause_text = f"[{display_body}]"
-        content_segments.append(clause_text)
-        if runs is not None:
-            if runs and not runs[-1]['text'].endswith(' '):
-                runs.append({'text': ' ', 'type': 'space'})
-            runs.append({'text': '[', 'type': 'clause_punct'})
-            for rtype, rtext in clause_run_pattern:
-                runs.append({'text': rtext, 'type': rtype})
-            runs.append({'text': ']', 'type': 'clause_punct'})
-
-    # Finally append listRef tokens (ensures gloss info appears first and clause markers before them)
-    if listref_codes:
-        if runs is not None:
-            for code in listref_codes:
-                # Append a space to previous run text instead of a separate space run to reduce rich text fragmentation
-                if runs and not runs[-1]['text'].endswith(' '):
-                    runs[-1]['text'] += ' '
-                runs.append({'text': '(', 'type': 'code_punct'})
-                runs.append({'text': code, 'type': 'code'})
-                runs.append({'text': ')', 'type': 'code_punct'})
-        content_segments.extend(f'({c})' for c in listref_codes)
-
-    if not content_segments:
-        # Fallback: single literal child if present
-        lit = main.find('lit')
-        if lit is not None and lit.text:
-            if runs is not None:
-                runs.append({'text': lit.text, 'type': 'literal'})
-            return lit.text
-        return ''
-
-    joined = ' '.join(seg for seg in content_segments if seg)
-    joined = re.sub(r'\s+\)', ')', joined)
-    joined = re.sub(r'\(\s+', '(', joined)
-    return joined
+    # Final string (no per-cell bracket balancing or listRef fallback)
+    return ''.join(out_parts)
 
 ## Removed get_user_choice: script now always uses a single generic analysis column.
 
@@ -306,53 +200,76 @@ def convert_to_excel(input_file, output_file):
     # Collect listRef codes across the chart for legend + include in parsing
     listref_counter = Counter()
 
+    # Precompute mapping of row id -> type (to color clause markers by target type)
+    row_type_by_id: dict[str, str] = {}
+    for r in chart.findall('row'):
+        rtype = r.get('type')
+        if rtype in ('title1', 'title2'):
+            continue
+        rid = r.get('id') or ''
+        if rid:
+            row_type_by_id[rid] = rtype or 'normal'
+
     # Extract data rows
     data = []
-    cell_runs_matrix: list[list[list[dict] | None]] = []  # Parallel to data rows; each entry a list of runs per column or None
+    merges_by_row: list[list[tuple[int, int]]] = []  # per data row: list of (start_col, end_col) to merge
     break_flags: list[str | None] = []  # 'sent', 'para', or None per data row order
     row_ids_in_order: list[str] = []
+    rownums_in_order: list[str] = []
+    row_types_in_order: list[str] = []
     clause_target_global: list[str] = []
-    for row in chart.findall('row[@type="normal"]'):
+    for row in chart.findall('row'):
+        rtype = row.get('type')
+        if rtype in ('title1', 'title2'):
+            continue
         row_data = ['']  # Blank leading column
-        row_runs: list[list[dict] | None] = [None]
         row_cells = row.findall('cell')
         if not row_cells:
             continue
         body_cells = row_cells[:-1]
         notes_cell = row_cells[-1]
+        rownum_text_for_row = ''
+        style_key = clause_style_for_row_type(rtype)
+        row_merges: list[tuple[int, int]] = []
+        current_col = 2  # Column B is sub_headers[1] ('Row') since col 1 is blank
         for cell in body_cells:
             span = int(cell.get('cols', 1))
-            runs_holder: list[dict] = []
             local_clause_targets: list[str] = []
-            value = parse_cell(cell, listref_counter, runs=runs_holder, clause_targets=local_clause_targets)
+            # Capture rownum text if present in this cell
+            try:
+                rn = cell.find('main/rownum')
+                if rn is not None and rn.text:
+                    rownum_text_for_row = (rn.text or '').strip()
+            except Exception:
+                pass
+            value = parse_cell(cell, listref_counter, local_clause_targets)
             if local_clause_targets:
                 clause_target_global.extend(local_clause_targets)
             row_data.append(value)
-            row_runs.append(runs_holder)
+            if span > 1:
+                # Record merge across these columns for this row
+                start_c = current_col
+                end_c = current_col + span - 1
+                row_merges.append((start_c, end_c))
             if span > 1:
                 for _ in range(span - 1):
                     row_data.append('')
-                    row_runs.append(None)
+            current_col += span
         # Analysis placeholder columns (no runs)
         row_data.extend([''] * len(analysis_columns))
-        row_runs.extend([None] * len(analysis_columns))
         # Notes
-        note_runs: list[dict] = []
-        note_val = parse_cell(notes_cell, listref_counter, runs=note_runs)
+        note_val = parse_cell(notes_cell, listref_counter)
         row_data.append(note_val)
-        row_runs.append(note_runs)
         # Normalize length
         if len(row_data) > len(sub_headers):
             logging.warning("Row %s produced %d columns; trimming to %d", row.get('id'), len(row_data), len(sub_headers))
             row_data = row_data[:len(sub_headers)]
-            row_runs = row_runs[:len(sub_headers)]
         elif len(row_data) < len(sub_headers):
             pad = len(sub_headers) - len(row_data)
             logging.warning("Row %s produced %d columns; padding to %d", row.get('id'), len(row_data), len(sub_headers))
             row_data.extend([''] * pad)
-            row_runs.extend([None] * pad)
         data.append(row_data)
-        cell_runs_matrix.append(row_runs)
+        merges_by_row.append(row_merges)
         # Determine break type for this row
         if row.get('endPara') == 'true':
             break_flags.append('para')
@@ -361,6 +278,8 @@ def convert_to_excel(input_file, output_file):
         else:
             break_flags.append(None)
         row_ids_in_order.append(row.get('id') or '')
+        rownums_in_order.append(rownum_text_for_row)
+        row_types_in_order.append(rtype or 'normal')
 
     # Create DataFrame without headers
     try:
@@ -437,13 +356,35 @@ def convert_to_excel(input_file, output_file):
         cell.font = Font(bold=True)  # Bold, default size
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    # Apply column borders to data rows (starting from row 7)
-    for row_idx in range(7, ws.max_row + 1):
-        for col_idx in range(1, ws.max_column + 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            cell.border = thin_border
+    # Merge data row cells according to cols attribute (like HTML colspan)
+    # Data rows begin at Excel row 7, columns B..last
+    for idx, row_merges in enumerate(merges_by_row):
+        excel_row = 7 + idx
+        for (start_c, end_c) in row_merges:
+            # Guard against out-of-range merges
+            if start_c < 2 or end_c > ws.max_column or end_c <= start_c:
+                continue
+            try:
+                ws.merge_cells(start_row=excel_row, start_column=start_c, end_row=excel_row, end_column=end_c)
+            except Exception as e:
+                logging.debug("Merge failed at row %d, cols %d-%d: %s", excel_row, start_c, end_c, e)
 
-    # Apply thick box border around chart (rows 5 to max_row, columns B to last)
+    # Apply subtle (thin) borders to all cells within the chart area (rows 5..max_row, cols B..last)
+    thin_all = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    for row_idx in range(5, ws.max_row + 1):
+        for col_idx in range(2, ws.max_column + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = thin_all
+            # For readability, center content in merged header/data when applicable; default left otherwise
+            if row_idx in (5, 6):
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Re-apply thick box border around chart (rows 5 to max_row, columns B to last) to override thin edges
     # Top border (row 5, columns B to last)
     for col_idx in range(2, ws.max_column + 1):
         cell = ws.cell(row=5, column=col_idx)
@@ -507,116 +448,25 @@ def convert_to_excel(input_file, output_file):
 
     # (Removed conditional data validation; not relevant for single generic analysis column.)
 
-    # Apply rich text styling to distinguish words / glosses / codes if supported
-    if ENABLE_RICH_TEXT and CellRichText is not None and InlineFont is not None:
-        gloss_color = 'FF1D4ED8'  # Blue
-        code_color = 'FFD97706'   # Orange
-        literal_color = 'FF4B5563'  # Gray
-
-        def style_signature(run_type: str):
-            if run_type == 'gloss':
-                return ('gloss', gloss_color, True, False)
-            if run_type in ('code', 'code_punct'):
-                return ('code', code_color, False, True)
-            if run_type == 'literal':
-                return ('literal', literal_color, False, False)
-            if run_type == 'clause':
-                # Clause marker core text
-                return ('clause', CLAUSE_FONT_COLOR, False, True)
-            if run_type == 'clause_punct':
-                # Brackets / dash around clause markers share color but not bold
-                return ('clause_punct', CLAUSE_FONT_COLOR, False, False)
-            if run_type == 'punct':
-                return ('gloss_punct', gloss_color, False, False)
-            return ('default', None, False, False)
-
-        def merge_runs(runs):
-            merged = []
-            for r in runs:
-                txt = r['text']
-                if not txt:
-                    continue
-                sig = style_signature(r['type'])
-                if merged and style_signature(merged[-1]['type']) == sig:
-                    merged[-1]['text'] += txt
-                else:
-                    merged.append({'text': txt, 'type': r['type']})
-            return merged
-
-        for r_index, row_runs in enumerate(cell_runs_matrix, start=7):
-            for c_index, runs in enumerate(row_runs, start=1):
-                if not runs:
-                    continue
-                cell = ws.cell(row=r_index, column=c_index)
-                if cell.value in (None, ''):
-                    continue
-                compact = merge_runs(runs)
-                # Skip overly complex cells to avoid Excel repair
-                if len(compact) > 60:
-                    logging.debug("Skipping rich text in %s%d (runs=%d)", get_column_letter(c_index), r_index, len(compact))
-                    continue
-                rich = CellRichText()
-                for run in compact:
-                    txt = run['text']
-                    rtype = run['type']
-                    _, color, italic, bold = style_signature(rtype)
-                    try:
-                        inline_font = InlineFont(color=color, i=italic, b=bold)
-                    except Exception:
-                        inline_font = InlineFont()
-                    try:
-                        rich.append(TextBlock(inline_font, txt))
-                    except Exception as e:
-                        logging.debug("Append TextBlock failed %s%d: %s", get_column_letter(c_index), r_index, e)
-                try:
-                    cell.data_type = 'inlineStr'
-                    cell.value = rich
-                except Exception as e:
-                    logging.debug("Rich text assignment failed %s%d: %s", get_column_letter(c_index), r_index, e)
-    else:
-        logging.info("Rich text formatting not supported by this openpyxl version; skipping token-level coloring.")
+    # Rich text styling removed; all text remains plain black.
 
     # Clause row shading (moved outside rich text block so it always runs)
-    try:
-        if clause_target_global and row_ids_in_order:
-            logging.debug("Clause targets collected: %s", clause_target_global)
-            # Build map from row id -> excel row number
-            rowid_to_excel = {}
-            for idx, rid in enumerate(row_ids_in_order):
-                if rid:
-                    rowid_to_excel[rid] = 7 + idx  # Data rows start at Excel row 7
-            target_excel_rows = set()
+    shaded_rows_count = 0
+    # Shade all non-normal rows by their type (independent of clause targets)
+    for idx, rtype in enumerate(row_types_in_order):
+        style_key = clause_style_for_row_type(rtype)
+        fill_color = CLAUSE_STYLE_MAP.get(style_key, CLAUSE_STYLE_MAP['normal'])['fill']
+        if not fill_color:
+            continue
+        erow = 7 + idx
+        fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type='solid')
+        for cidx in range(2, ws.max_column + 1):
+            cell = ws.cell(row=erow, column=cidx)
+            cell.fill = fill
+        shaded_rows_count += 1
+    logging.debug("Colored clause markers: %d | Shaded rows: %d", 0, shaded_rows_count)
 
-            # Helper: fuzzy match if direct match absent (row id endswith target or sanitized equals)
-            def fuzzy_match(target: str):
-                if target in rowid_to_excel:
-                    return rowid_to_excel[target]
-                for rid, er in rowid_to_excel.items():
-                    if rid.endswith(target):
-                        return er
-                    # Strip non-alphanum and compare
-                    import re as _re
-                    if _re.sub(r'\W', '', rid) == _re.sub(r'\W', '', target):
-                        return er
-                return None
-
-            unmatched = []
-            for target in clause_target_global:
-                excel_r = fuzzy_match(target)
-                if excel_r:
-                    target_excel_rows.add(excel_r)
-                else:
-                    unmatched.append(target)
-            if unmatched:
-                logging.debug("Unmatched clause targets (no row id found): %s", unmatched)
-            if target_excel_rows:
-                fill = PatternFill(start_color=CLAUSE_FILL_COLOR, end_color=CLAUSE_FILL_COLOR, fill_type='solid')
-                for erow in target_excel_rows:
-                    for cidx in range(2, ws.max_column + 1):
-                        cell = ws.cell(row=erow, column=cidx)
-                        cell.fill = fill  # Always override (visual priority)
-    except Exception as e:
-        logging.debug("Clause row shading failed: %s", e)
+    # Text color disabled: skip safe coloring pass
 
     # Adjust column widths, handling merged cells
     for col_idx in range(1, ws.max_column + 1):
@@ -634,10 +484,42 @@ def convert_to_excel(input_file, output_file):
         adjusted_width = max_length + 2
         ws.column_dimensions[column_letter].width = adjusted_width
 
-    # Apply auto-filter using sub-header row as header, excluding column A
-    ws.auto_filter.ref = f"B6:{get_column_letter(ws.max_column)}{ws.max_row}"
+    # (Temporarily disable auto-filter to rule out hidden rows due to filters)
+    # ws.auto_filter.ref = f"B6:{get_column_letter(ws.max_column)}{ws.max_row}"
 
-    # Add Legend sheet for listRef codes (if any captured)
+    # Add Debug sheet with row id/rownum mapping and clause target markers
+    try:
+        if 'Debug' in wb.sheetnames:
+            dbg = wb['Debug']
+            for row in dbg['A1:Z999']:
+                for cell in row:
+                    cell.value = None
+        else:
+            dbg = wb.create_sheet(title='Debug')
+        dbg['A1'] = 'ExcelRow'
+        dbg['B1'] = 'RowId'
+        dbg['C1'] = 'Rownum'
+        dbg['D1'] = 'ClauseTargeted'
+        dbg['A1'].font = Font(bold=True)
+        dbg['B1'].font = Font(bold=True)
+        dbg['C1'].font = Font(bold=True)
+        dbg['D1'].font = Font(bold=True)
+        targets_set = set(clause_target_global or [])
+        for idx, (rid, rnum) in enumerate(zip(row_ids_in_order, rownums_in_order), start=0):
+            erow = 7 + idx
+            dbg.cell(row=2 + idx, column=1, value=erow)
+            dbg.cell(row=2 + idx, column=2, value=rid)
+            dbg.cell(row=2 + idx, column=3, value=rnum)
+            # Mark if matched by exact target string
+            dbg.cell(row=2 + idx, column=4, value='Y' if (rid in targets_set or rnum in targets_set) else '')
+        dbg.column_dimensions['A'].width = 10
+        dbg.column_dimensions['B'].width = 20
+        dbg.column_dimensions['C'].width = 12
+        dbg.column_dimensions['D'].width = 14
+    except Exception as e:
+        logging.debug("Failed to add Debug sheet: %s", e)
+
+    # Add Legend sheet for listRef codes and clause type colors
     try:
         if 'Legend' in wb.sheetnames:
             legend_ws = wb['Legend']
@@ -647,6 +529,7 @@ def convert_to_excel(input_file, output_file):
                     cell.value = None
         else:
             legend_ws = wb.create_sheet(title='Legend')
+        # Section 1: listRef codes
         legend_ws['A1'] = 'Code'
         legend_ws['B1'] = 'Count'
         legend_ws['A1'].font = Font(bold=True)
@@ -654,8 +537,36 @@ def convert_to_excel(input_file, output_file):
         for idx, (code, count) in enumerate(sorted(listref_counter.items()), start=2):
             legend_ws.cell(row=idx, column=1, value=code)
             legend_ws.cell(row=idx, column=2, value=count)
-        legend_ws.column_dimensions['A'].width = 12
-        legend_ws.column_dimensions['B'].width = 8
+        listref_rows = max(1, len(listref_counter))
+        cursor = 2 + listref_rows + 1  # one blank line after listRef section
+
+        # Section 2: Clause Types color key
+        legend_ws.cell(row=cursor, column=1, value='Clause Types').font = Font(bold=True)
+        cursor += 1
+        legend_ws.cell(row=cursor, column=1, value='Type').font = Font(bold=True)
+        legend_ws.cell(row=cursor, column=2, value='Marker Text').font = Font(bold=True)
+        legend_ws.cell(row=cursor, column=3, value='Row Shading').font = Font(bold=True)
+        cursor += 1
+        # Order types for readability
+        types_order = ['dependent', 'speech', 'song', 'normal']
+        for tkey in types_order:
+            style = CLAUSE_STYLE_MAP.get(tkey, CLAUSE_STYLE_MAP['normal'])
+            name = tkey.capitalize()
+            legend_ws.cell(row=cursor, column=1, value=name)
+            # Sample marker text with font color
+            legend_ws.cell(row=cursor, column=2, value='[19a-19b]')
+            # Fill swatch (or none)
+            fill_color = style.get('fill')
+            if fill_color:
+                legend_ws.cell(row=cursor, column=3, value='').fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type='solid')
+            else:
+                legend_ws.cell(row=cursor, column=3, value='(none)')
+            cursor += 1
+
+        # Adjust widths
+        legend_ws.column_dimensions['A'].width = 18
+        legend_ws.column_dimensions['B'].width = 16
+        legend_ws.column_dimensions['C'].width = 14
     except Exception as e:
         logging.warning("Failed to add Legend sheet: %s", e)
 
