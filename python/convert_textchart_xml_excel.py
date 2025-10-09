@@ -2,7 +2,7 @@
 import xml.etree.ElementTree as ET
 import pandas as pd
 import openpyxl
-from openpyxl.styles import Font, Alignment, Border, Side
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from collections import Counter
@@ -26,8 +26,10 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 ENABLE_RICH_TEXT = True
 # Placeholder shown when a <listRef> element has no text (user hasn't configured abbreviation)
 LISTREF_EMPTY_PLACEHOLDER = '?'  # Change to e.g. 'Ø' or 'UNDEF' if preferred
+CLAUSE_FONT_COLOR = 'FF065F73'      # Dark blue-green for clause marker text
+CLAUSE_FILL_COLOR = 'FFE0F5F4'      # Light blue-green fill for clause rows
 
-def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None = None):
+def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None = None, clause_targets: list | None = None):
     """Parse a chart cell.
 
     Output ordering rule (requested): gloss information (paired or grouped) must appear BEFORE any listRef code tokens.
@@ -40,6 +42,12 @@ def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None =
 
     Mismatched counts (len(glosses) != len(words)) => emit words joined, then a single parenthetical group with all glosses.
     Matched counts => emit each word with its gloss: word (gloss).
+        Clause markers:
+            - Multiple <clauseMkr> elements are inspected. If they form a contiguous sequence (e.g. 19a,19b,19c) they are compressed to first-last (19a-19c).
+            - If not contiguous (e.g. 19a,19c,20b) they are listed with commas: 19a,19c,20b.
+            - A single marker appears alone: 19a.
+            - The synthesized form is always enclosed in brackets: [19a-19c] or [19a,19c,20b].
+            - Any literal bracket/dash characters found in the same cell that served the same purpose are suppressed to avoid duplication.
     """
     main = cell.find('main')
     if main is None:
@@ -73,6 +81,7 @@ def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None =
     words: list[str] = []
     literal_tokens: list[str] = []
     listref_codes: list[str] = []
+    clause_codes: list[str] = []
 
     glosses_elem = cell.find('glosses')
     gloss_texts = [g.text for g in glosses_elem.findall('gloss')] if glosses_elem is not None else []
@@ -96,6 +105,12 @@ def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None =
                 listref_counter[code] += 1
             if code:
                 listref_codes.append(code)
+        elif tag == 'clauseMkr':
+            target = elem.get('target') or text or ''
+            if target:
+                clause_codes.append(target)
+                if clause_targets is not None:
+                    clause_targets.append(target)
         # Other tags ignored here (handled earlier if needed)
 
     content_segments: list[str] = []
@@ -164,7 +179,60 @@ def parse_cell(cell, listref_counter: Counter | None = None, runs: list | None =
                     runs.append({'text': ' ', 'type': 'space'})
                 runs.append({'text': lit_token, 'type': 'literal'})
 
-    # Finally append listRef tokens (ensures gloss info appears first)
+    # Insert clause marker (after lexical/gloss & literals, before listRef codes) with smarter handling
+    if clause_codes:
+        # Remove bracket/dash literal tokens that would duplicate our synthesized marker
+        literal_tokens = [t for t in literal_tokens if t not in ('[', ']', '-')]
+
+        def parse_code(code: str):
+            import re as _re
+            m = _re.match(r'^(\d+)([A-Za-z]?)$', code)
+            if not m:
+                return None
+            num = int(m.group(1))
+            letter = m.group(2)
+            # Map '' -> 0, 'a'->1, 'b'->2 ... case-insensitive
+            letter_val = (ord(letter.lower()) - 96) if letter else 0
+            return (num, letter_val)
+
+        def is_contiguous(codes: list[str]) -> bool:
+            parsed = [parse_code(c) for c in codes]
+            if any(p is None for p in parsed):
+                return False
+            for (a_num, a_let), (b_num, b_let) in zip(parsed, parsed[1:]):
+                # Linearize: value = number * 100 + letter_val (letter_val small)
+                a_val = a_num * 100 + a_let
+                b_val = b_num * 100 + b_let
+                if b_val - a_val != 1:
+                    return False
+            return True if len(codes) > 1 else True
+
+        display_body: str
+        if len(clause_codes) == 1:
+            display_body = clause_codes[0]
+            clause_run_pattern = [('clause', clause_codes[0])]
+        else:
+            if is_contiguous(clause_codes):
+                display_body = f"{clause_codes[0]}-{clause_codes[-1]}"
+                clause_run_pattern = [('clause', clause_codes[0]), ('clause_punct', '-'), ('clause', clause_codes[-1])]
+            else:
+                display_body = ','.join(clause_codes)
+                clause_run_pattern = []
+                for i, ccode in enumerate(clause_codes):
+                    if i:
+                        clause_run_pattern.append(('clause_punct', ','))
+                    clause_run_pattern.append(('clause', ccode))
+        clause_text = f"[{display_body}]"
+        content_segments.append(clause_text)
+        if runs is not None:
+            if runs and not runs[-1]['text'].endswith(' '):
+                runs.append({'text': ' ', 'type': 'space'})
+            runs.append({'text': '[', 'type': 'clause_punct'})
+            for rtype, rtext in clause_run_pattern:
+                runs.append({'text': rtext, 'type': rtype})
+            runs.append({'text': ']', 'type': 'clause_punct'})
+
+    # Finally append listRef tokens (ensures gloss info appears first and clause markers before them)
     if listref_codes:
         if runs is not None:
             for code in listref_codes:
@@ -242,6 +310,8 @@ def convert_to_excel(input_file, output_file):
     data = []
     cell_runs_matrix: list[list[list[dict] | None]] = []  # Parallel to data rows; each entry a list of runs per column or None
     break_flags: list[str | None] = []  # 'sent', 'para', or None per data row order
+    row_ids_in_order: list[str] = []
+    clause_target_global: list[str] = []
     for row in chart.findall('row[@type="normal"]'):
         row_data = ['']  # Blank leading column
         row_runs: list[list[dict] | None] = [None]
@@ -253,7 +323,10 @@ def convert_to_excel(input_file, output_file):
         for cell in body_cells:
             span = int(cell.get('cols', 1))
             runs_holder: list[dict] = []
-            value = parse_cell(cell, listref_counter, runs=runs_holder)
+            local_clause_targets: list[str] = []
+            value = parse_cell(cell, listref_counter, runs=runs_holder, clause_targets=local_clause_targets)
+            if local_clause_targets:
+                clause_target_global.extend(local_clause_targets)
             row_data.append(value)
             row_runs.append(runs_holder)
             if span > 1:
@@ -287,6 +360,7 @@ def convert_to_excel(input_file, output_file):
             break_flags.append('sent')
         else:
             break_flags.append(None)
+        row_ids_in_order.append(row.get('id') or '')
 
     # Create DataFrame without headers
     try:
@@ -446,6 +520,12 @@ def convert_to_excel(input_file, output_file):
                 return ('code', code_color, False, True)
             if run_type == 'literal':
                 return ('literal', literal_color, False, False)
+            if run_type == 'clause':
+                # Clause marker core text
+                return ('clause', CLAUSE_FONT_COLOR, False, True)
+            if run_type == 'clause_punct':
+                # Brackets / dash around clause markers share color but not bold
+                return ('clause_punct', CLAUSE_FONT_COLOR, False, False)
             if run_type == 'punct':
                 return ('gloss_punct', gloss_color, False, False)
             return ('default', None, False, False)
@@ -495,6 +575,48 @@ def convert_to_excel(input_file, output_file):
                     logging.debug("Rich text assignment failed %s%d: %s", get_column_letter(c_index), r_index, e)
     else:
         logging.info("Rich text formatting not supported by this openpyxl version; skipping token-level coloring.")
+
+    # Clause row shading (moved outside rich text block so it always runs)
+    try:
+        if clause_target_global and row_ids_in_order:
+            logging.debug("Clause targets collected: %s", clause_target_global)
+            # Build map from row id -> excel row number
+            rowid_to_excel = {}
+            for idx, rid in enumerate(row_ids_in_order):
+                if rid:
+                    rowid_to_excel[rid] = 7 + idx  # Data rows start at Excel row 7
+            target_excel_rows = set()
+
+            # Helper: fuzzy match if direct match absent (row id endswith target or sanitized equals)
+            def fuzzy_match(target: str):
+                if target in rowid_to_excel:
+                    return rowid_to_excel[target]
+                for rid, er in rowid_to_excel.items():
+                    if rid.endswith(target):
+                        return er
+                    # Strip non-alphanum and compare
+                    import re as _re
+                    if _re.sub(r'\W', '', rid) == _re.sub(r'\W', '', target):
+                        return er
+                return None
+
+            unmatched = []
+            for target in clause_target_global:
+                excel_r = fuzzy_match(target)
+                if excel_r:
+                    target_excel_rows.add(excel_r)
+                else:
+                    unmatched.append(target)
+            if unmatched:
+                logging.debug("Unmatched clause targets (no row id found): %s", unmatched)
+            if target_excel_rows:
+                fill = PatternFill(start_color=CLAUSE_FILL_COLOR, end_color=CLAUSE_FILL_COLOR, fill_type='solid')
+                for erow in target_excel_rows:
+                    for cidx in range(2, ws.max_column + 1):
+                        cell = ws.cell(row=erow, column=cidx)
+                        cell.fill = fill  # Always override (visual priority)
+    except Exception as e:
+        logging.debug("Clause row shading failed: %s", e)
 
     # Adjust column widths, handling merged cells
     for col_idx in range(1, ws.max_column + 1):
