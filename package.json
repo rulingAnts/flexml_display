@@ -9,7 +9,8 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win nsis",
     "dist:win:portable": "electron-builder --win portable",
-    "dist:win:all": "electron-builder --win nsis portable"
+    "dist:win:all": "electron-builder --win nsis portable",
+    "vendor:update": "npm install exceljs@4.3.0 file-saver@2.0.5 && cp node_modules/exceljs/dist/exceljs.min.js docs/vendor/ && cp node_modules/file-saver/dist/FileSaver.min.js docs/vendor/"
   },
   "author": "",
   "engines": {
