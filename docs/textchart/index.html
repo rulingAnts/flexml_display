@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Upload Chart XML → HTML table</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; margin: 1.5em; }
+    #output { margin-top: 1em; }
+  </style>
+</head>
+<body>
+  <h1>Upload a Chart XML</h1>
+  <p>Select your FLEx/FieldWorks chart XML file (e.g. <code>DiscourseChartSet1a.xml</code>), and this page will apply the hosted XSLT to render a table.</p>
+
+  <input type="file" id="xmlFile" accept=".xml,text/xml"/>
+  <div id="status"></div>
+  <div id="output"></div>
+
+  <script>
+    async function loadXSL() {
+      const resp = await fetch('chart-to-html.xsl');
+      if (!resp.ok) throw new Error('Failed to fetch XSL: ' + resp.status);
+      const txt = await resp.text();
+      return new DOMParser().parseFromString(txt, 'text/xml');
+    }
+
+    async function handleFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      document.getElementById('status').textContent = 'Loading XSL...';
+      try {
+        const [xslDoc, xmlText] = await Promise.all([
+          loadXSL(),
+          file.text()
+        ]);
+        document.getElementById('status').textContent = 'Parsing XML...';
+        const xmlDoc = new DOMParser().parseFromString(xmlText, 'text/xml');
+
+        if (!window.XSLTProcessor) {
+          document.getElementById('status').textContent = 'XSLTProcessor not supported in this browser.';
+          return;
+        }
+
+        const proc = new XSLTProcessor();
+        proc.importStylesheet(xslDoc);
+        const frag = proc.transformToFragment(xmlDoc, document);
+        const out = document.getElementById('output');
+        out.innerHTML = ''; // clear
+        out.appendChild(frag);
+        document.getElementById('status').textContent = 'Rendered successfully.';
+      } catch (err) {
+        document.getElementById('status').textContent = 'Error: ' + err.message;
+        console.error(err);
+      }
+    }
+
+    document.getElementById('xmlFile').addEventListener('change', handleFile);
+  </script>
+</body>
+</html>
