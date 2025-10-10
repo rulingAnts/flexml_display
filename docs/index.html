@@ -22,6 +22,10 @@
   button.secondary{background:#ddd;color:#111}
   .small-btn{padding:4px 8px;font-size:0.85rem;border-radius:6px}
   .viewer{margin-top:18px;background:var(--card);border:1px solid var(--border);padding:14px;border-radius:8px;box-shadow:0 1px 0 rgba(0,0,0,0.03)}
+  /* Expand the white card to fit wide content so the browser handles scrollbars */
+  .viewer{width:max-content;min-width:100%}
+  /* Override XSL's table width:100% so it can define its natural width */
+  .viewer .chartshell{width:max-content}
   .controls-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
   .section-title{font-weight:600;margin:8px 0;font-size:1rem}
   ul.tree{list-style:none;margin:6px 0 6px 14px;padding-left:10px;border-left:1px dotted #ddd}
@@ -153,14 +157,14 @@ byId('resetBtn').addEventListener('click', ()=>{
   byId('renderArea').innerHTML = '<div class="small-muted">Paste or upload an XML file, then click Transform.</div>';
 });
 
-byId('transformBtn').addEventListener('click', ()=> {
+byId('transformBtn').addEventListener('click', async ()=> {
   const xmlText = byId('xmlInput').value.trim();
   if(!xmlText){ alert('Please paste or upload an XML document first.'); return; }
   try {
     const p = new DOMParser();
     const xmlDoc = p.parseFromString(xmlText, 'application/xml');
     if(xmlDoc.querySelector('parsererror')) throw new Error('XML parse error');
-    renderDocument(xmlDoc);
+    await renderDocument(xmlDoc);
   } catch(err){
     alert('Error parsing XML: ' + err.message);
   }
@@ -193,7 +197,7 @@ byId('showNames').addEventListener('change', e=>{
 });
 
 /* ===== Main detection & dispatch ===== */
-function renderDocument(xmlDoc){
+async function renderDocument(xmlDoc){
   // reset state
   globalState = { phonemeIndex:{}, idToNatclassIds:{}, natclassElements:{}, phonemeRowIds:{}, showNames: byId('showNames').checked };
 
@@ -201,6 +205,15 @@ function renderDocument(xmlDoc){
   const tag = root.nodeName.toLowerCase();
   const area = byId('renderArea');
   area.innerHTML = '';
+
+  // Detect Text Chart (Discourse chart) and render via XSLT
+  if(isTextChartDocument(xmlDoc)){
+    const rendered = await renderTextChart(xmlDoc);
+    area.innerHTML = '';
+    if(rendered){ area.appendChild(rendered); }
+    else { area.textContent = 'Failed to render Text Chart.'; }
+    return;
+  }
 
   // Order of detection: Phonology, Translated Lists (AUni multi), Monolingual list, Wordforms, Generic
   if(tag === 'phonology'){
@@ -230,6 +243,83 @@ function renderDocument(xmlDoc){
 
   // fallback generic
   area.appendChild(renderGenericView(root));
+}
+
+/* ===== Text Chart detection and rendering (XSLT) ===== */
+function isTextChartDocument(xmlDoc){
+  if(!xmlDoc || !xmlDoc.documentElement) return false;
+  // Typical structure: <document><chart>...</chart></document> or a top-level <chart>
+  return !!(xmlDoc.querySelector('document > chart > row') || xmlDoc.querySelector('chart > row'));
+}
+
+async function loadTextChartXSL(){
+  const url = `textchart/textchart-to-html.xsl?v=${Date.now()}`;
+  const resp = await fetch(url);
+  if(!resp.ok) throw new Error(`Failed to fetch XSL (${resp.status})`);
+  const txt = await resp.text();
+  const doc = new DOMParser().parseFromString(txt, 'text/xml');
+  const err = doc.getElementsByTagName('parsererror')[0];
+  if(err) throw new Error('XSL parse error: ' + err.textContent.trim());
+  return doc;
+}
+
+async function renderTextChart(xmlDoc){
+  if(typeof XSLTProcessor === 'undefined'){
+    const frag = document.createDocumentFragment();
+    frag.appendChild(create('div', {cls:'small-muted'}, 'XSLTProcessor not supported in this browser.'));
+    return frag;
+  }
+  const xslDoc = await loadTextChartXSL();
+  const proc = new XSLTProcessor();
+  proc.importStylesheet(xslDoc);
+  try{
+    // Optional: pass through debug param from URL (?debug=1)
+    const urlParams = new URLSearchParams(window.location.search);
+    const dbg = urlParams.get('debug');
+    if(dbg && ['1','true','yes','on'].includes(dbg.toLowerCase())){
+      proc.setParameter(null, 'debug', 'true');
+    }
+  }catch(_){/* no-op if params unsupported */}
+
+  // Run transform to a fragment, then extract the body contents if present
+  const frag = proc.transformToFragment(xmlDoc, document);
+  const wrapper = document.createElement('div');
+  wrapper.appendChild(frag);
+  // If XSL produced a <head>, merge its styles into the page once
+  const head = wrapper.querySelector('head');
+  if (head) {
+    // Inline <style>
+    const styleEl = head.querySelector('style');
+    if (styleEl) {
+      const EXISTING_ID = 'textchart-xsl-style';
+      let dest = document.getElementById(EXISTING_ID);
+      if (!dest) {
+        dest = document.createElement('style');
+        dest.id = EXISTING_ID;
+        document.head.appendChild(dest);
+      }
+      dest.textContent = styleEl.textContent || '';
+    }
+    // Linked stylesheets (if any in future)
+    head.querySelectorAll('link[rel="stylesheet"][href]').forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+      // Avoid duplicates by href
+      const exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"][href]'))
+        .some(l => l.getAttribute('href') === href);
+      if (!exists) {
+        const copy = document.createElement('link');
+        copy.rel = 'stylesheet';
+        copy.href = href;
+        document.head.appendChild(copy);
+      }
+    });
+  }
+  const body = wrapper.querySelector('body');
+  const outFrag = document.createDocumentFragment();
+  const source = body || wrapper; // prefer body if the XSL produced a full HTML doc
+  Array.from(source.childNodes).forEach(n => outFrag.appendChild(n));
+  return outFrag;
 }
 
 /* ===== Monolingual List (unchanged behavior) ===== */
