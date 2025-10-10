@@ -16,45 +16,54 @@
   <div id="status"></div>
   <div id="output"></div>
 
-  <script>
-    async function loadXSL() {
-      const resp = await fetch('textchart-to-html.xsl');
-      if (!resp.ok) throw new Error('Failed to fetch XSL: ' + resp.status);
-      const txt = await resp.text();
-      return new DOMParser().parseFromString(txt, 'text/xml');
-    }
+<script>
+  // Automatically add a cache-busting parameter (timestamp) to force GitHub Pages/CDN refreshes.
+  // You can also replace this with a manual version string if you prefer predictable URLs.
+  function cacheBust(url) {
+    const ts = new Date().toISOString().replace(/[-:.TZ]/g, "");
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}v=${ts}`;
+  }
 
-    async function handleFile(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      document.getElementById('status').textContent = 'Loading XSL...';
-      try {
-        const [xslDoc, xmlText] = await Promise.all([
-          loadXSL(),
-          file.text()
-        ]);
-        document.getElementById('status').textContent = 'Parsing XML...';
-        const xmlDoc = new DOMParser().parseFromString(xmlText, 'text/xml');
+  async function loadXSL() {
+    const url = cacheBust("chart-to-html.xsl");
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Failed to fetch XSL: " + resp.status);
+    const txt = await resp.text();
+    return new DOMParser().parseFromString(txt, "text/xml");
+  }
 
-        if (!window.XSLTProcessor) {
-          document.getElementById('status').textContent = 'XSLTProcessor not supported in this browser.';
-          return;
-        }
+  async function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    document.getElementById("status").textContent = "Loading XSL...";
+    try {
+      const [xslDoc, xmlText] = await Promise.all([
+        loadXSL(),
+        file.text()
+      ]);
+      document.getElementById("status").textContent = "Parsing XML...";
+      const xmlDoc = new DOMParser().parseFromString(xmlText, "text/xml");
 
-        const proc = new XSLTProcessor();
-        proc.importStylesheet(xslDoc);
-        const frag = proc.transformToFragment(xmlDoc, document);
-        const out = document.getElementById('output');
-        out.innerHTML = ''; // clear
-        out.appendChild(frag);
-        document.getElementById('status').textContent = 'Rendered successfully.';
-      } catch (err) {
-        document.getElementById('status').textContent = 'Error: ' + err.message;
-        console.error(err);
+      if (!window.XSLTProcessor) {
+        document.getElementById("status").textContent = "XSLTProcessor not supported in this browser.";
+        return;
       }
-    }
 
-    document.getElementById('xmlFile').addEventListener('change', handleFile);
-  </script>
+      const proc = new XSLTProcessor();
+      proc.importStylesheet(xslDoc);
+      const frag = proc.transformToFragment(xmlDoc, document);
+      const out = document.getElementById("output");
+      out.innerHTML = "";
+      out.appendChild(frag);
+      document.getElementById("status").textContent = "Rendered successfully.";
+    } catch (err) {
+      document.getElementById("status").textContent = "Error: " + err.message;
+      console.error(err);
+    }
+  }
+
+  document.getElementById("xmlFile").addEventListener("change", handleFile);
+</script>
 </body>
 </html>
