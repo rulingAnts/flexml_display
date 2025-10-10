@@ -215,7 +215,13 @@
     <label for="prefaceHtml">Preface (HTML allowed)</label>
     <div class="full">
       <textarea id="prefaceHtml" placeholder="Type any HTML to appear before the chart (optional)"></textarea>
-      <div class="small-muted" style="margin-top:6px">Tip: You can include basic HTML like <code>&lt;p&gt;</code>, <code>&lt;div&gt;</code>, <code>&lt;em&gt;</code>, or links. This content is included when you Open or Save as HTML.</div>
+      <div class="small-muted" style="margin-top:6px">
+        Tip: You can include basic HTML like <code>&lt;p&gt;</code>, <code>&lt;div&gt;</code>, <code>&lt;em&gt;</code>, or links. 
+        If you don't know HTML, leave that to us — when “Auto-convert line breaks” is on, Enter makes a new paragraph and Shift+Enter inserts a line break.
+      </div>
+      <label class="small-muted" style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <input id="prefaceAuto" type="checkbox" checked> Auto-convert line breaks (Enter = new paragraph, Shift+Enter = line break)
+      </label>
     </div>
     <div></div>
     <div style="display:flex;gap:8px">
@@ -320,7 +326,13 @@ byId('showNames').addEventListener('change', e=>{
 
 /* ===== Prologue (title + preface HTML) controls wiring ===== */
 function loadProloguePrefs(){
-  return loadJSON(TEXTCHART_PROLOGUE_KEY) || { tag: 'h1', titleText: '', prefaceHtml: '' };
+  const d = loadJSON(TEXTCHART_PROLOGUE_KEY) || {};
+  return {
+    tag: d.tag || 'h1',
+    titleText: d.titleText || '',
+    prefaceHtml: d.prefaceHtml || '', // stores raw user text or HTML
+    autoConvert: typeof d.autoConvert === 'boolean' ? d.autoConvert : true
+  };
 }
 function saveProloguePrefs(p){ saveJSON(TEXTCHART_PROLOGUE_KEY, p); }
 function initPrologueControls(){
@@ -328,6 +340,7 @@ function initPrologueControls(){
   const tagSel = byId('titleTag');
   const titleIn = byId('titleText');
   const preTA = byId('prefaceHtml');
+  const preAuto = byId('prefaceAuto');
   const clearTitleBtn = byId('clearTitleBtn');
   const clearPrefaceBtn = byId('clearPrefaceBtn');
   if(!panel || !tagSel || !titleIn || !preTA) return;
@@ -335,8 +348,9 @@ function initPrologueControls(){
   tagSel.value = prefs.tag || 'h1';
   titleIn.value = prefs.titleText || '';
   preTA.value = prefs.prefaceHtml || '';
+  if(preAuto) preAuto.checked = !!prefs.autoConvert;
   const onChange = ()=>{
-    const p = { tag: tagSel.value, titleText: titleIn.value, prefaceHtml: preTA.value };
+    const p = { tag: tagSel.value, titleText: titleIn.value, prefaceHtml: preTA.value, autoConvert: !!(preAuto && preAuto.checked) };
     saveProloguePrefs(p);
     // Live-update DOM if a text chart is displayed
     applyPrologueToRenderArea(p);
@@ -344,8 +358,25 @@ function initPrologueControls(){
   tagSel.addEventListener('change', onChange);
   titleIn.addEventListener('input', onChange);
   preTA.addEventListener('input', onChange);
+  preAuto?.addEventListener('change', onChange);
   clearTitleBtn?.addEventListener('click', ()=>{ titleIn.value=''; onChange(); });
   clearPrefaceBtn?.addEventListener('click', ()=>{ preTA.value=''; onChange(); });
+
+  // Map Enter to paragraph and Shift+Enter to single line break within the textarea
+  preTA.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      const isShift = e.shiftKey;
+      const val = preTA.value;
+      const start = preTA.selectionStart;
+      const end = preTA.selectionEnd;
+      const insertText = isShift ? '\n' : '\n\n';
+      preTA.value = val.slice(0, start) + insertText + val.slice(end);
+      const newPos = start + insertText.length;
+      preTA.selectionStart = preTA.selectionEnd = newPos;
+      onChange();
+    }
+  });
 }
 // Ensure controls are initialized on load
 initPrologueControls();
@@ -361,16 +392,25 @@ function applyPrologueToRenderArea(prefs){
     area.insertBefore(prologue, area.firstChild || null);
   }
   prologue.innerHTML = '';
-  const { tag, titleText, prefaceHtml } = (prefs || loadProloguePrefs());
+  const { tag, titleText } = (prefs || loadProloguePrefs());
+  let { prefaceHtml, autoConvert } = (prefs || loadProloguePrefs());
   if(titleText && tag){
     const t = document.createElement(tag);
     t.textContent = titleText;
     prologue.appendChild(t);
   }
   if(prefaceHtml && prefaceHtml.trim()){
-    // Insert as raw HTML as requested (tech-savvy users may include tags)
+    // Convert plain text to HTML when auto-convert is on and content appears to be plain text.
+    const appearsHtml = /<\s*[a-zA-Z!/]/.test(prefaceHtml);
+    let htmlOut = prefaceHtml;
+    if(autoConvert && !appearsHtml){
+      // Treat double newlines as paragraph breaks, single newline as <br /> within a paragraph
+      const norm = prefaceHtml.replace(/\r\n?/g, '\n');
+      const paras = norm.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+      htmlOut = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
+    }
     const wrapper = document.createElement('div');
-    wrapper.innerHTML = prefaceHtml;
+    wrapper.innerHTML = htmlOut;
     Array.from(wrapper.childNodes).forEach(n => prologue.appendChild(n));
   }
   // If both are empty, remove the container to avoid extra spacing
@@ -1216,6 +1256,18 @@ function buildStandaloneHTML(){
     if(cPrologue) cPrologue.remove(); // remove from rest of content
   }
   content += clone.innerHTML;
+
+  // Pick a title for the export: prefer H1 from prologue, then any heading/div/p, else fallback
+  let exportTitle = 'FLEx XML View Export';
+  if (prologueNode) {
+    const h1 = prologueNode.querySelector('h1');
+    const anyHead = prologueNode.querySelector('h1,h2,h3,h4,h5,h6,div,p');
+    const titleNode = h1 || anyHead;
+    if (titleNode && titleNode.textContent) {
+      const t = titleNode.textContent.replace(/\s+/g, ' ').trim();
+      if (t) exportTitle = t;
+    }
+  }
   // Collect all current styles from <head> including any injected at runtime
   function collectCurrentHeadCSS(){
     let css = '';
@@ -1242,7 +1294,7 @@ function buildStandaloneHTML(){
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>FLEx XML View Export</title>
+<title>${escapeHtml(exportTitle)}</title>
 <style>${headCSS}\n</style>
 </head>
 <body>
