@@ -27,6 +27,12 @@
   /* Override XSL's table width:100% so it can define its natural width */
   .viewer .chartshell{width:max-content}
   .controls-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .prologue-panel{display:none;margin-top:10px;background:#f7fbff;border:1px solid #d9ebff;padding:10px 12px;border-radius:8px}
+  .prologue-grid{display:grid;grid-template-columns:140px 1fr;gap:8px 10px;align-items:center}
+  .prologue-grid .full{grid-column:1 / -1}
+  .prologue-grid input[type=text]{width:100%;padding:6px;border:1px solid var(--border);border-radius:6px}
+  .prologue-grid select{padding:6px;border:1px solid var(--border);border-radius:6px}
+  .prologue-grid textarea{width:100%;min-height:80px}
   .section-title{font-weight:600;margin:8px 0;font-size:1rem}
   ul.tree{list-style:none;margin:6px 0 6px 14px;padding-left:10px;border-left:1px dotted #ddd}
   ul.tree li{margin:4px 0;position:relative;padding-left:6px}
@@ -189,6 +195,35 @@
   </div>
 </div>
 
+<!-- Optional heading and preface (HTML) to insert before a Text Chart -->
+<div id="prologuePanel" class="prologue-panel" aria-live="polite">
+  <div class="small-muted" style="margin-bottom:8px;font-weight:600">Chart header and note (optional)</div>
+  <div class="prologue-grid">
+    <label for="titleTag">Title element</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="titleTag" aria-label="Title element">
+        <option value="h1">h1</option>
+        <option value="h2">h2</option>
+        <option value="h3">h3</option>
+        <option value="div">div</option>
+        <option value="p">p</option>
+      </select>
+      <input id="titleText" type="text" placeholder="Enter a chart title (optional)" />
+      <button id="clearTitleBtn" class="small-btn secondary" title="Clear title">Clear</button>
+    </div>
+
+    <label for="prefaceHtml">Preface (HTML allowed)</label>
+    <div class="full">
+      <textarea id="prefaceHtml" placeholder="Type any HTML to appear before the chart (optional)"></textarea>
+      <div class="small-muted" style="margin-top:6px">Tip: You can include basic HTML like <code>&lt;p&gt;</code>, <code>&lt;div&gt;</code>, <code>&lt;em&gt;</code>, or links. This content is included when you Open or Save as HTML.</div>
+    </div>
+    <div></div>
+    <div style="display:flex;gap:8px">
+      <button id="clearPrefaceBtn" class="small-btn secondary" title="Clear preface">Clear preface</button>
+    </div>
+  </div>
+</div>
+
 <div id="viewer" class="viewer" aria-live="polite">
   <div id="renderArea" class="small-muted">Paste or upload an XML file, then click Transform.</div>
 </div>
@@ -216,6 +251,7 @@ function create(tag, attrs={}, text){
 /* ===== Persistence keys and state ===== */
 const LANG_PREFS_KEY = 'flex_xml_viewer_lang_prefs_v1';
 const WORDFORM_PREFS_KEY = 'flex_xml_viewer_wordform_prefs_v1';
+const TEXTCHART_PROLOGUE_KEY = 'flex_textchart_prologue_v1';
 
 let globalState = {
   phonemeIndex: {},
@@ -239,6 +275,8 @@ byId('fileInput').addEventListener('change', async e=>{
 byId('resetBtn').addEventListener('click', ()=>{
   byId('xmlInput').value = '';
   byId('renderArea').innerHTML = '<div class="small-muted">Paste or upload an XML file, then click Transform.</div>';
+  // Hide optional chart prologue controls when no chart is displayed
+  showProloguePanel(false);
 });
 
 byId('transformBtn').addEventListener('click', async ()=> {
@@ -280,6 +318,65 @@ byId('showNames').addEventListener('change', e=>{
   });
 });
 
+/* ===== Prologue (title + preface HTML) controls wiring ===== */
+function loadProloguePrefs(){
+  return loadJSON(TEXTCHART_PROLOGUE_KEY) || { tag: 'h1', titleText: '', prefaceHtml: '' };
+}
+function saveProloguePrefs(p){ saveJSON(TEXTCHART_PROLOGUE_KEY, p); }
+function initPrologueControls(){
+  const panel = byId('prologuePanel');
+  const tagSel = byId('titleTag');
+  const titleIn = byId('titleText');
+  const preTA = byId('prefaceHtml');
+  const clearTitleBtn = byId('clearTitleBtn');
+  const clearPrefaceBtn = byId('clearPrefaceBtn');
+  if(!panel || !tagSel || !titleIn || !preTA) return;
+  const prefs = loadProloguePrefs();
+  tagSel.value = prefs.tag || 'h1';
+  titleIn.value = prefs.titleText || '';
+  preTA.value = prefs.prefaceHtml || '';
+  const onChange = ()=>{
+    const p = { tag: tagSel.value, titleText: titleIn.value, prefaceHtml: preTA.value };
+    saveProloguePrefs(p);
+    // Live-update DOM if a text chart is displayed
+    applyPrologueToRenderArea(p);
+  };
+  tagSel.addEventListener('change', onChange);
+  titleIn.addEventListener('input', onChange);
+  preTA.addEventListener('input', onChange);
+  clearTitleBtn?.addEventListener('click', ()=>{ titleIn.value=''; onChange(); });
+  clearPrefaceBtn?.addEventListener('click', ()=>{ preTA.value=''; onChange(); });
+}
+// Ensure controls are initialized on load
+initPrologueControls();
+function showProloguePanel(show){ byId('prologuePanel').style.display = show ? 'block' : 'none'; }
+function applyPrologueToRenderArea(prefs){
+  const area = byId('renderArea');
+  if(!area) return;
+  // Ensure a fixed container exists as the first child for prologue content
+  let prologue = area.querySelector(':scope > .chart-prologue');
+  if(!prologue){
+    prologue = document.createElement('div');
+    prologue.className = 'chart-prologue';
+    area.insertBefore(prologue, area.firstChild || null);
+  }
+  prologue.innerHTML = '';
+  const { tag, titleText, prefaceHtml } = (prefs || loadProloguePrefs());
+  if(titleText && tag){
+    const t = document.createElement(tag);
+    t.textContent = titleText;
+    prologue.appendChild(t);
+  }
+  if(prefaceHtml && prefaceHtml.trim()){
+    // Insert as raw HTML as requested (tech-savvy users may include tags)
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = prefaceHtml;
+    Array.from(wrapper.childNodes).forEach(n => prologue.appendChild(n));
+  }
+  // If both are empty, remove the container to avoid extra spacing
+  if(!prologue.childNodes.length){ prologue.remove(); }
+}
+
 /* ===== Main detection & dispatch ===== */
 async function renderDocument(xmlDoc){
   // reset state
@@ -294,6 +391,9 @@ async function renderDocument(xmlDoc){
   if(isTextChartDocument(xmlDoc)){
     const rendered = await renderTextChart(xmlDoc);
     area.innerHTML = '';
+    // Show prologue controls and inject current prologue before the chart
+    showProloguePanel(true);
+    applyPrologueToRenderArea(loadProloguePrefs());
     if(rendered){ area.appendChild(rendered); }
     else { area.textContent = 'Failed to render Text Chart.'; }
     return;
@@ -301,6 +401,7 @@ async function renderDocument(xmlDoc){
 
   // Order of detection: Phonology, Translated Lists (AUni multi), Monolingual list, Wordforms, Generic
   if(tag === 'phonology'){
+    showProloguePanel(false);
     area.appendChild(renderPhonologyView(xmlDoc));
     return;
   }
@@ -310,9 +411,11 @@ async function renderDocument(xmlDoc){
     const aunis = xmlDoc.querySelectorAll('AUni[ws]');
     const langSet = new Set(Array.from(aunis).map(a => a.getAttribute('ws')));
     if(langSet.size > 1){
+      showProloguePanel(false);
       area.appendChild(renderTranslatedListView(root, Array.from(langSet)));
       return;
     } else {
+      showProloguePanel(false);
       area.appendChild(renderListView(root));
       return;
     }
@@ -321,11 +424,13 @@ async function renderDocument(xmlDoc){
   // Wordforms detection (FieldWorks uses a <wordforms> root or similar)
   const wfNodes = xmlDoc.getElementsByTagName('wordforms');
   if(wfNodes && wfNodes.length > 0){
+    showProloguePanel(false);
     area.appendChild(renderWordformsView(xmlDoc));
     return;
   }
 
   // fallback generic
+  showProloguePanel(false);
   area.appendChild(renderGenericView(root));
 }
 
@@ -1101,7 +1206,16 @@ function scrollToAndHighlight(rowId){
 /* ===== Build standalone HTML (for open/save) — note escaped closing tag to avoid template literal issues ===== */
 function buildStandaloneHTML(){
   const render = byId('renderArea');
-  const content = render.innerHTML;
+  // Gather prologue (if any) + current render content (without duplicating prologue)
+  let content = '';
+  const prologueNode = render.querySelector(':scope > .chart-prologue');
+  const clone = render.cloneNode(true);
+  if(prologueNode){
+    content += prologueNode.outerHTML; // put prologue first
+    const cPrologue = clone.querySelector(':scope > .chart-prologue');
+    if(cPrologue) cPrologue.remove(); // remove from rest of content
+  }
+  content += clone.innerHTML;
   // Collect all current styles from <head> including any injected at runtime
   function collectCurrentHeadCSS(){
     let css = '';
