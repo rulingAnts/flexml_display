@@ -1102,23 +1102,34 @@ function scrollToAndHighlight(rowId){
 function buildStandaloneHTML(){
   const render = byId('renderArea');
   const content = render.innerHTML;
+  // Collect all current styles from <head> including any injected at runtime
+  function collectCurrentHeadCSS(){
+    let css = '';
+    // Inline <style> tags in order
+    document.head.querySelectorAll('style').forEach((s, idx)=>{
+      const label = s.id ? `style#${s.id}` : `style[${idx}]`;
+      css += `\n/* ${label} */\n` + (s.textContent || '') + '\n';
+    });
+    // Attempt to inline same-origin linked stylesheets
+    Array.from(document.styleSheets || []).forEach(ss => {
+      try{
+        // Only include sheets originating from a <link> node we can read
+        if(ss && ss.ownerNode && ss.ownerNode.tagName === 'LINK' && ss.cssRules){
+          css += `\n/* linked stylesheet: ${ss.href || ''} */\n`;
+          for(const rule of ss.cssRules){ css += rule.cssText + '\n'; }
+        }
+      }catch(e){ /* likely a cross-origin stylesheet; skip */ }
+    });
+    return css.trim();
+  }
+  const headCSS = collectCurrentHeadCSS();
   const doc = `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>FLEx XML View Export</title>
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;margin:18px;color:#111;background:#fbfbfb}
-  .toggle{cursor:pointer;color:#0b6edb;margin-right:6px}
-  ul.tree{list-style:none;margin:6px 0 6px 14px;padding-left:10px;border-left:1px dotted #ddd}
-  .collapsed > ul{display:none}
-  .symbol-pill{background:#f1f8ff;border:1px solid #d6eaff;padding:3px 7px;border-radius:6px;cursor:pointer}
-  .highlight{background: #fff2b8}
-  table.phonemes{width:100%;border-collapse:collapse;margin-top:8px}
-  table.phonemes th, table.phonemes td{padding:8px;border-bottom:1px solid #eee;text-align:left}
-  .natclass{border:1px solid #e2e2e2;padding:8px;border-radius:6px;margin-bottom:10px;background:linear-gradient(#fff,#f9f9f9)}
-</style>
+<style>${headCSS}\n</style>
 </head>
 <body>
 ${content}

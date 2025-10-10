@@ -46,6 +46,8 @@ The desktop app bundles the same viewer for offline use.
 - Wordforms: use the Filter box; switch Card/Table view; choose which gloss languages appear in Table view.
 - “Open in new window” creates a self‑contained view for sharing or printing; “Save as HTML” saves a static snapshot.
 
+Note: “Save as HTML” embeds the current page’s styles from the <head> (including any injected at runtime), so borders, interlinear alignment, and other formatting match what you see.
+
 ## Privacy
 
 - 100% client‑side. Files never leave your machine.
