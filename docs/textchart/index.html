@@ -18,7 +18,7 @@
 
   <script>
     async function loadXSL() {
-      const resp = await fetch('chart-to-html.xsl');
+      const resp = await fetch('textchart-to-html.xsl');
       if (!resp.ok) throw new Error('Failed to fetch XSL: ' + resp.status);
       const txt = await resp.text();
       return new DOMParser().parseFromString(txt, 'text/xml');
