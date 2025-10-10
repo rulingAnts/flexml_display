@@ -26,6 +26,14 @@
   .viewer{width:max-content;min-width:100%}
   /* Override XSL's table width:100% so it can define its natural width */
   .viewer .chartshell{width:max-content}
+  /* Column resize UI for Text Chart tables */
+  .chartshell th{position:relative}
+  .col-resizer{position:absolute;top:0;right:0;width:8px;cursor:col-resize;user-select:none;height:100%}
+  .col-resizer:after{content:"";position:absolute;top:0;bottom:0;left:2px;width:2px;background:transparent}
+  .col-resizer.dragging:after{background:rgba(11,110,219,0.35)}
+  /* Make content wrap when columns shrink (resizable mode switches table-layout to fixed) */
+  .chartshell th, .chartshell td{overflow-wrap:anywhere; word-break:normal; min-width:0}
+  /* Interlinear pair layout is defined by XSL-injected <style>; avoid overriding here. */
   .controls-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
   .prologue-panel{display:none;margin-top:10px;background:#f7fbff;border:1px solid #d9ebff;padding:10px 12px;border-radius:8px}
   .prologue-grid{display:grid;grid-template-columns:140px 1fr;gap:8px 10px;align-items:center}
@@ -434,7 +442,11 @@ async function renderDocument(xmlDoc){
     // Show prologue controls and inject current prologue before the chart
     showProloguePanel(true);
     applyPrologueToRenderArea(loadProloguePrefs());
-    if(rendered){ area.appendChild(rendered); }
+    if(rendered){
+      area.appendChild(rendered);
+      // Enable column resizing on the text chart table
+      enableTextChartColumnResize(area);
+    }
     else { area.textContent = 'Failed to render Text Chart.'; }
     return;
   }
@@ -1321,10 +1333,220 @@ ${content}
       }
     });
   });
+
+  // === Column resize support for Text Chart tables (export) ===
+  function expandColgroupsToIndividualCols(tbl){
+    const groups = Array.from(tbl.querySelectorAll('colgroup'));
+    groups.forEach(g=>{
+      const c = g.querySelector('col');
+      if(!c) return;
+      const span = Number(c.getAttribute('span')||'1');
+      if(span > 1){
+        c.removeAttribute('span');
+        const frag = document.createDocumentFragment();
+        for(let i=0;i<span;i++) frag.appendChild(document.createElement('col'));
+        g.replaceChild(frag, c);
+      }
+    });
+  }
+  function addResizeHandles(tbl){
+    // Prefer title2 row (finer-grained columns), fallback to title1
+    const header2 = tbl.querySelector('tr.row.title2');
+    const header = header2 || tbl.querySelector('tr.row.title1');
+    if(!header) return;
+    let colIndex = 0;
+    const groups = Array.from(tbl.querySelectorAll('colgroup'));
+    const allCols = groups.flatMap(g => Array.from(g.querySelectorAll('col')));
+    header.querySelectorAll('th.cell').forEach(th=>{
+      const span = Number(th.getAttribute('colspan')||'1');
+      // For title2, most cells should be span=1; place handle per-column
+      const targetColEnd = colIndex + span - 1;
+      const handle = document.createElement('div');
+      handle.className = 'col-resizer';
+      handle.title = 'Drag to resize column';
+      handle.dataset.colEnd = String(targetColEnd);
+      th.appendChild(handle);
+      wireHandleDrag(handle, allCols);
+      colIndex += span;
+    });
+  }
+  function wireHandleDrag(handle, allCols){
+    let startX = 0, startWidth = 0, colEl = null;
+    function computeMinColWidth(tbl, idx){
+      // Measure widest interlinear pair in this column across a sample of rows
+      let minW = 40;
+      const rows = Array.from(tbl.querySelectorAll('tbody tr')).slice(0, 200); // cap for perf
+      rows.forEach(row=>{
+        let ci = 0; let cell = null;
+        Array.from(row.children).some(td=>{
+          const sp = Number(td.getAttribute('colspan')||'1');
+          const covers = (idx >= ci) && (idx < ci + sp);
+          ci += sp; if(covers){ cell = td; return true; } return false;
+        });
+        if(cell){
+          // Prefer measuring non-note pairs so note columns can shrink more easily
+          let pairs = cell.querySelectorAll('.interlinear .pair:not(.note)');
+          if(!pairs.length) pairs = cell.querySelectorAll('.interlinear .pair');
+          pairs.forEach(p=>{ const w = Math.ceil(p.getBoundingClientRect().width); if(w > minW) minW = w; });
+        }
+      });
+      return Math.max(40, minW);
+    }
+    function onMove(e){
+      const dx = e.clientX - startX;
+      const tbl = handle.closest('table');
+      const idx = Number(handle.dataset.colEnd||'0');
+      const minAllowed = computeMinColWidth(tbl, idx);
+      const newW = Math.max(minAllowed, startWidth + dx);
+      colEl.style.width = newW + 'px';
+      handle.classList.add('dragging');
+    }
+    function onUp(){
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      handle.classList.remove('dragging');
+    }
+    handle.addEventListener('mousedown', (e)=>{
+      e.preventDefault();
+      const idx = Number(handle.dataset.colEnd||'0');
+      colEl = allCols[idx];
+      if(!colEl) return;
+      const tbl = handle.closest('table');
+      const bodyRow = tbl.querySelector('tbody tr');
+      let probeCell = null;
+      if(bodyRow){
+        let ci = 0; probeCell = Array.from(bodyRow.children).find(td=>{
+          const sp = Number(td.getAttribute('colspan')||'1');
+          const covers = (idx >= ci) && (idx < ci + sp);
+          ci += sp; return covers;
+        });
+      }
+      const rect = (probeCell || handle.parentElement).getBoundingClientRect();
+      if(!colEl.style.width){ colEl.style.width = Math.max(40, Math.round(rect.width)) + 'px'; }
+      startX = e.clientX;
+      startWidth = parseFloat(colEl.style.width) || Math.max(40, Math.round(rect.width));
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+  function enableTextChartColumnResize(root){
+    const tbl = (root instanceof Element ? root : document).querySelector('table.chartshell');
+    if(!tbl || tbl.dataset.resizable === '1') return;
+    expandColgroupsToIndividualCols(tbl);
+    addResizeHandles(tbl);
+    tbl.dataset.resizable = '1';
+    // Fixed layout allows shrinking columns and wrapping content
+    tbl.style.tableLayout = 'fixed';
+    tbl.style.width = 'auto';
+    tbl.style.maxWidth = '100%';
+  }
+  enableTextChartColumnResize(document);
 <\/script>
 </body>
 </html>`;
   return doc;
+}
+
+/* ===== Column resizing for Text Chart in-app ===== */
+function expandColgroupsToIndividualCols(tbl){
+  const groups = Array.from(tbl.querySelectorAll('colgroup'));
+  groups.forEach(g=>{
+    const c = g.querySelector('col');
+    if(!c) return;
+    const span = Number(c.getAttribute('span')||'1');
+    if(span > 1){
+      c.removeAttribute('span');
+      const frag = document.createDocumentFragment();
+      for(let i=0;i<span;i++) frag.appendChild(document.createElement('col'));
+      g.replaceChild(frag, c);
+    }
+  });
+}
+function addResizeHandles(tbl){
+  const header2 = tbl.querySelector('tr.row.title2');
+  const header = header2 || tbl.querySelector('tr.row.title1');
+  if(!header) return;
+  let colIndex = 0;
+  const groups = Array.from(tbl.querySelectorAll('colgroup'));
+  const allCols = groups.flatMap(g => Array.from(g.querySelectorAll('col')));
+  header.querySelectorAll('th.cell').forEach(th=>{
+    const span = Number(th.getAttribute('colspan')||'1');
+    const targetColEnd = colIndex + span - 1;
+    const handle = document.createElement('div');
+    handle.className = 'col-resizer';
+    handle.title = 'Drag to resize column';
+    handle.dataset.colEnd = String(targetColEnd);
+    th.appendChild(handle);
+    wireHandleDrag(handle, allCols);
+    colIndex += span;
+  });
+}
+function wireHandleDrag(handle, allCols){
+  let startX = 0, startWidth = 0, colEl = null;
+    function computeMinColWidth(tbl, idx){
+      let minW = 40;
+      const rows = Array.from(tbl.querySelectorAll('tbody tr')).slice(0, 200);
+      rows.forEach(row=>{
+        let ci = 0; let cell = null;
+        Array.from(row.children).some(td=>{
+          const sp = Number(td.getAttribute('colspan')||'1');
+          const covers = (idx >= ci) && (idx < ci + sp);
+          ci += sp; if(covers){ cell = td; return true; } return false;
+        });
+        if(cell){
+          let pairs = cell.querySelectorAll('.interlinear .pair:not(.note)');
+          if(!pairs.length) pairs = cell.querySelectorAll('.interlinear .pair');
+          pairs.forEach(p=>{ const w = Math.ceil(p.getBoundingClientRect().width); if(w > minW) minW = w; });
+        }
+      });
+      return Math.max(40, minW);
+    }
+  function onMove(e){
+    const dx = e.clientX - startX;
+      const tbl = handle.closest('table');
+      const idx = Number(handle.dataset.colEnd||'0');
+      const minAllowed = computeMinColWidth(tbl, idx);
+      const newW = Math.max(minAllowed, startWidth + dx);
+    colEl.style.width = newW + 'px';
+    handle.classList.add('dragging');
+  }
+  function onUp(){
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    handle.classList.remove('dragging');
+  }
+  handle.addEventListener('mousedown', (e)=>{
+    e.preventDefault();
+    const idx = Number(handle.dataset.colEnd||'0');
+    colEl = allCols[idx];
+    if(!colEl) return;
+    const tbl = handle.closest('table');
+    const bodyRow = tbl.querySelector('tbody tr');
+    let probeCell = null;
+    if(bodyRow){
+      let ci = 0; probeCell = Array.from(bodyRow.children).find(td=>{
+        const sp = Number(td.getAttribute('colspan')||'1');
+        const covers = (idx >= ci) && (idx < ci + sp);
+        ci += sp; return covers;
+      });
+    }
+    const rect = (probeCell || handle.parentElement).getBoundingClientRect();
+    if(!colEl.style.width){ colEl.style.width = Math.max(40, Math.round(rect.width)) + 'px'; }
+    startX = e.clientX;
+    startWidth = parseFloat(colEl.style.width) || Math.max(40, Math.round(rect.width));
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+function enableTextChartColumnResize(root){
+  const tbl = (root instanceof Element ? root : document).querySelector('table.chartshell');
+  if(!tbl || tbl.dataset.resizable === '1') return;
+  expandColgroupsToIndividualCols(tbl);
+  addResizeHandles(tbl);
+  tbl.dataset.resizable = '1';
+    tbl.style.tableLayout = 'fixed';
+    tbl.style.width = 'auto';
+    tbl.style.maxWidth = '100%';
 }
 </script>
 </body>

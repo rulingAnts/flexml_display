@@ -79,18 +79,21 @@ colgroup.group5 col {
 /* reversed cell alignment */
 .cell.reversed { text-align: right; }
 
-/* interlinear layout */
+/* interlinear layout (wrap by word/gloss pair, not within words) */
 .interlinear {
-  display: inline-grid;
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
-  grid-template-rows: auto auto;
-  gap: 0 var(--interlinear-gap);
-  white-space: normal;
-  align-items: start;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
 }
-.interlinear .w { grid-row: 1; }
-.interlinear .g { grid-row: 2; font-size: 0.9em; color: var(--gloss-color); }
+.interlinear .pair { display: inline-flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.interlinear .pair { margin-left: var(--interlinear-gap); }
+.interlinear .pair:first-child { margin-left: 0; }
+/* Keep parentheses/brackets tight with adjacent tokens */
+.interlinear .pair.punct-open + .pair { margin-left: 0; }
+.interlinear .pair.punct-close { margin-left: 0; }
+.interlinear .w { white-space: nowrap; }
+.interlinear .pair.note .w { white-space: normal; }
+.interlinear .g { white-space: nowrap; font-size: 0.9em; color: var(--gloss-color); }
 
 /* small token classes */
 .listRef { color: var(--listref-color); font-weight: 600; }
@@ -311,31 +314,46 @@ colgroup.group5 col {
   <xsl:template match="main">
     <div class="interlinear">
       <xsl:for-each select="*">
-        <xsl:choose>
-          <xsl:when test="name()='word'">
-            <xsl:variable name="wi" select="count(preceding-sibling::word)+1"/>
-            <span class="w"><xsl:value-of select="."/></span>
-            <span class="g"><xsl:value-of select="../following-sibling::glosses[1]/gloss[$wi] | ../glosses/gloss[$wi]"/></span>
-          </xsl:when>
-          <xsl:when test="name()='lit'">
-            <span class="w"><xsl:value-of select="."/></span><span class="g"/>
-          </xsl:when>
-          <xsl:when test="name()='listRef'">
-            <span class="w listRef"><xsl:value-of select="."/></span><span class="g"/>
-          </xsl:when>
-          <xsl:when test="name()='clauseMkr'">
-            <span class="w clauseMkr"><xsl:value-of select="."/></span><span class="g"/>
-          </xsl:when>
-          <xsl:when test="name()='rownum'">
-            <span class="w rownum"><xsl:value-of select="."/></span><span class="g"/>
-          </xsl:when>
-          <xsl:when test="name()='note'">
-            <span class="w note"><xsl:value-of select="."/></span><span class="g"/>
-          </xsl:when>
-          <xsl:otherwise>
-            <span class="w"><xsl:value-of select="."/></span><span class="g"/>
-          </xsl:otherwise>
-        </xsl:choose>
+        <xsl:variable name="nm" select="name()"/>
+        <xsl:variable name="txt" select="string(.)"/>
+        <xsl:variable name="isOpenPunct" select="$nm='lit' and ($txt='(' or $txt='[' or $txt='{')"/>
+        <xsl:variable name="isClosePunct" select="$nm='lit' and ($txt=')' or $txt=']' or $txt='}')"/>
+        <span>
+          <xsl:attribute name="class">
+            <xsl:text>pair</xsl:text>
+            <xsl:if test="$nm='listRef'"> <xsl:text> listRef</xsl:text></xsl:if>
+            <xsl:if test="$nm='clauseMkr'"> <xsl:text> clauseMkr</xsl:text></xsl:if>
+            <xsl:if test="$nm='rownum'"> <xsl:text> rownum</xsl:text></xsl:if>
+            <xsl:if test="$nm='note'"> <xsl:text> note</xsl:text></xsl:if>
+            <xsl:if test="$isOpenPunct"> <xsl:text> punct-open</xsl:text></xsl:if>
+            <xsl:if test="$isClosePunct"> <xsl:text> punct-close</xsl:text></xsl:if>
+          </xsl:attribute>
+          <xsl:choose>
+            <xsl:when test="$nm='word'">
+              <xsl:variable name="wi" select="count(preceding-sibling::word)+1"/>
+              <span class="w"><xsl:value-of select="."/></span>
+              <span class="g"><xsl:value-of select="../following-sibling::glosses[1]/gloss[$wi] | ../glosses/gloss[$wi]"/></span>
+            </xsl:when>
+            <xsl:when test="$nm='lit'">
+              <span class="w"><xsl:value-of select="."/></span><span class="g"/>
+            </xsl:when>
+            <xsl:when test="$nm='listRef'">
+              <span class="w listRef"><xsl:value-of select="."/></span><span class="g"/>
+            </xsl:when>
+            <xsl:when test="$nm='clauseMkr'">
+              <span class="w clauseMkr"><xsl:value-of select="."/></span><span class="g"/>
+            </xsl:when>
+            <xsl:when test="$nm='rownum'">
+              <span class="w rownum"><xsl:value-of select="."/></span><span class="g"/>
+            </xsl:when>
+            <xsl:when test="$nm='note'">
+              <span class="w note"><xsl:value-of select="."/></span><span class="g"/>
+            </xsl:when>
+            <xsl:otherwise>
+              <span class="w"><xsl:value-of select="."/></span><span class="g"/>
+            </xsl:otherwise>
+          </xsl:choose>
+        </span>
       </xsl:for-each>
     </div>
   </xsl:template>
