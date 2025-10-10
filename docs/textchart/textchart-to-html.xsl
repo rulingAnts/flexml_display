@@ -27,6 +27,8 @@
   --note-color: #444;
   --cell-padding: 6px 8px;
   --interlinear-gap: 0.35em;
+  /* Configurable width for the last column (typically Notes) */
+  --notes-col-width: 24ch;
 }
 
 /* ================= Table Layout ================= */
@@ -37,6 +39,8 @@
   font-family: var(--font-family);
   font-size: var(--font-size);
   margin: 1em 0;
+  /* Fixed layout so explicit column widths are respected and the last column doesn't balloon */
+  table-layout: fixed;
 }
 
 /* colgroup-based thick borders */
@@ -57,10 +61,23 @@ colgroup.group4 col,
 colgroup.group5 col {
   border-right: var(--header-border-thick);
 }
+/* Constrain the width of the final group (typically Notes column) */
+colgroup[class^="group"]:last-of-type col {
+  /* A sane width for notes; adjust as needed */
+  width: var(--notes-col-width);
+}
 .chartshell th, .chartshell td {
   border: var(--cell-border);
   padding: var(--cell-padding);
   vertical-align: top;
+}
+
+/* Ensure the last column wraps so it doesn't force the table wider */
+.chartshell tr > th:last-child,
+.chartshell tr > td:last-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Title rows */
