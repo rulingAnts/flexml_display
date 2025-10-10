@@ -94,6 +94,20 @@ colgroup.group5 col {
 .clauseMkr { color: var(--clausemkr-color); font-weight: 600; }
 .rownum { color: var(--rownum-color); font-weight: 600; margin-right: 0.25em; }
 .note { color: var(--note-color); font-style: italic; }
+
+/* ================= Group vertical borders (per-cell) ================= */
+/* Draw thick right borders at the end of each header-defined group */
+.chartshell th.group-end, .chartshell td.group-end {
+  border-right: var(--header-border-thick);
+}
+/* Avoid double lines: default remove left border for group starts... */
+.chartshell th.group-start, .chartshell td.group-start {
+  border-left: 0;
+}
+/* ...but keep a thick left border on the first column of the table */
+.chartshell tr > .group-start:first-child {
+  border-left: var(--header-border-thick);
+}
 ]]>
   </xsl:variable>
 
@@ -211,6 +225,45 @@ colgroup.group5 col {
         <xsl:otherwise>td</xsl:otherwise>
       </xsl:choose>
     </xsl:variable>
+    <!-- Compute absolute column start/end indices for this cell -->
+    <xsl:variable name="colStart" select="sum(preceding-sibling::cell/@cols) + count(preceding-sibling::cell[not(@cols)]) + 1"/>
+    <xsl:variable name="span">
+      <xsl:choose>
+        <xsl:when test="@cols"><xsl:value-of select="@cols"/></xsl:when>
+        <xsl:otherwise>1</xsl:otherwise>
+      </xsl:choose>
+    </xsl:variable>
+    <xsl:variable name="colEnd" select="$colStart + number($span) - 1"/>
+    <!-- Determine if this cell sits at a group boundary based on the first title row -->
+    <xsl:variable name="isGroupEnd">
+      <xsl:for-each select="/document/chart/row[@type='title1'][1]/cell">
+        <xsl:variable name="hStart" select="sum(preceding-sibling::cell/@cols) + count(preceding-sibling::cell[not(@cols)]) + 1"/>
+        <xsl:variable name="hSpan">
+          <xsl:choose>
+            <xsl:when test="@cols"><xsl:value-of select="@cols"/></xsl:when>
+            <xsl:otherwise>1</xsl:otherwise>
+          </xsl:choose>
+        </xsl:variable>
+        <xsl:variable name="hEnd" select="$hStart + number($hSpan) - 1"/>
+        <xsl:if test="number($hEnd) = number($colEnd)">X</xsl:if>
+      </xsl:for-each>
+    </xsl:variable>
+    <xsl:variable name="isGroupStart">
+      <!-- First column is always a group start -->
+      <xsl:if test="$colStart = 1">X</xsl:if>
+      <!-- Also a start if the previous column was a group end -->
+      <xsl:for-each select="/document/chart/row[@type='title1'][1]/cell">
+        <xsl:variable name="hStart" select="sum(preceding-sibling::cell/@cols) + count(preceding-sibling::cell[not(@cols)]) + 1"/>
+        <xsl:variable name="hSpan">
+          <xsl:choose>
+            <xsl:when test="@cols"><xsl:value-of select="@cols"/></xsl:when>
+            <xsl:otherwise>1</xsl:otherwise>
+          </xsl:choose>
+        </xsl:variable>
+        <xsl:variable name="hEnd" select="$hStart + number($hSpan) - 1"/>
+        <xsl:if test="number($hEnd) = number($colStart - 1)">X</xsl:if>
+      </xsl:for-each>
+    </xsl:variable>
     <xsl:element name="{$tag}">
       <xsl:if test="@cols">
         <xsl:attribute name="colspan"><xsl:value-of select="@cols"/></xsl:attribute>
@@ -218,6 +271,8 @@ colgroup.group5 col {
       <xsl:attribute name="class">
         <xsl:text>cell</xsl:text>
         <xsl:if test="@reversed='true'"> reversed</xsl:if>
+        <xsl:if test="string-length($isGroupStart) &gt; 0"> group-start</xsl:if>
+        <xsl:if test="string-length($isGroupEnd) &gt; 0"> group-end</xsl:if>
       </xsl:attribute>
       <xsl:apply-templates select="main|glosses"/>
     </xsl:element>
