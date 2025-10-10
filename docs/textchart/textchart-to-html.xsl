@@ -274,7 +274,8 @@ colgroup.group5 col {
         <xsl:if test="string-length($isGroupStart) &gt; 0"> group-start</xsl:if>
         <xsl:if test="string-length($isGroupEnd) &gt; 0"> group-end</xsl:if>
       </xsl:attribute>
-      <xsl:apply-templates select="main|glosses"/>
+      <!-- Render interlinear content; no fallback glosses -->
+      <xsl:apply-templates select="main"/>
     </xsl:element>
   </xsl:template>
 
@@ -311,9 +312,5 @@ colgroup.group5 col {
     </div>
   </xsl:template>
 
-  <xsl:template match="glosses">
-    <div class="glosses-fallback">
-      <xsl:for-each select="gloss"><span class="g"><xsl:value-of select="."/></span></xsl:for-each>
-    </div>
-  </xsl:template>
+  <!-- No explicit glosses template; glosses are consumed by interlinear mapping only. -->
 </xsl:stylesheet>
