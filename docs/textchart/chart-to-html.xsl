@@ -4,7 +4,6 @@
 
   <!-- ========================
        CSS / style variables
-       Edit these at the top
        ======================== -->
   <xsl:variable name="css">
 <![CDATA[
@@ -16,43 +15,68 @@
   --font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   --font-size: 14px;
   --gloss-color: #666;
-  --dependent-color: #0b60d6; /* blue */
-  --speech-color: #127a2d;    /* green */
-  --song-color: #6b2fa8;      /* purple */
-  --listref-color: #d97706;   /* orange */
-  --clausemkr-color: #0a8a3f;  /* green for clause markers */
+  --dependent-color: #0b60d6;
+  --speech-color: #127a2d;
+  --song-color: #6b2fa8;
+  --listref-color: #d97706;
+  --clausemkr-color: #0a8a3f;
   --rownum-color: #000;
   --note-color: #444;
   --cell-padding: 6px 8px;
   --interlinear-gap: 0.35em;
 }
 
-/* Basic table appearance */
-.chartshell { font-family: var(--font-family); font-size: var(--font-size); margin: 1em 0; border-collapse: collapse; width: 100%; }
-.chartshell th, .chartshell td { border: var(--cell-border); padding: var(--cell-padding); vertical-align: top; }
+/* ================= Table Layout ================= */
+.chartshell {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  margin: 1em 0;
+}
+
+/* colgroup-based thick borders */
+colgroup[class^="group"] col {
+  border-left: none;
+  border-right: none;
+}
+colgroup.group1 col:first-child {
+  border-left: var(--header-border-thick);
+}
+colgroup[class^="group"]:last-of-type col:last-child {
+  border-right: var(--header-border-thick);
+}
+colgroup.group1 col,
+colgroup.group2 col,
+colgroup.group3 col,
+colgroup.group4 col,
+colgroup.group5 col {
+  border-right: var(--header-border-thick);
+}
+.chartshell th, .chartshell td {
+  border: var(--cell-border);
+  padding: var(--cell-padding);
+  vertical-align: top;
+}
 
 /* Title rows */
-.row.title1 th { border: var(--header-border-thick); background: #f6f6f6; }
-.row.title2 th { border-right: var(--header-border-thick); background: #fbfbfb; }
+.row.title1 th { background: #f6f6f6; border-top: var(--header-border-thick); border-bottom: var(--header-border-thick); }
+.row.title2 th { background: #fbfbfb; border-right: var(--header-border-thick); }
 
-/* Row type classes */
-.row.normal { }
+/* Row type colors */
 .row.dependent { color: var(--dependent-color); }
 .row.speech { color: var(--speech-color); }
 .row.song { color: var(--song-color); }
 
-/* end sentence / paragraph */
+/* Sentence/paragraph boundaries */
 .row.endSent { border-bottom: var(--row-end-border); }
 .row.endPara { border-bottom: var(--para-end-border); }
 
 /* reversed cell alignment */
 .cell.reversed { text-align: right; }
 
-/* Interlinear layout:
-   For each "token" (word, lit, listRef, clauseMkr, rownum, possibly others)
-   we produce paired spans: .w (word-line) and .g (gloss-line).
-   The interlinear container uses inline-grid so columns align.
-*/
+/* interlinear layout */
 .interlinear {
   display: inline-grid;
   grid-auto-flow: column;
@@ -70,21 +94,21 @@
 .clauseMkr { color: var(--clausemkr-color); font-weight: 600; }
 .rownum { color: var(--rownum-color); font-weight: 600; margin-right: 0.25em; }
 .note { color: var(--note-color); font-style: italic; }
-
-/* thin gray borders default between table cells (already set on th/td via .chartshell) */
 ]]>
   </xsl:variable>
 
-  <!-- ============ Helper templates ============ -->
-
-  <!-- Output the style block -->
+  <!-- ===========================
+       Helper: emit <style>
+       =========================== -->
   <xsl:template name="emit-style">
     <style>
       <xsl:value-of select="$css" disable-output-escaping="yes"/>
     </style>
   </xsl:template>
 
-  <!-- comment in HTML with language metadata if available -->
+  <!-- ===========================
+       Helper: emit metadata comment
+       =========================== -->
   <xsl:template name="emit-metadata-comment">
     <xsl:if test="/document/languages">
       <xsl:comment>
@@ -98,7 +122,7 @@
   </xsl:template>
 
   <!-- ===========================
-       Main: produce an HTML page
+       Root template
        =========================== -->
   <xsl:template match="/">
     <html>
@@ -108,11 +132,13 @@
         <xsl:call-template name="emit-style"/>
       </head>
       <body>
-        <!-- languages/metadata comment -->
         <xsl:call-template name="emit-metadata-comment"/>
 
         <div class="chartshell-wrapper">
-          <table class="chartshell" role="table">
+          <table class="chartshell">
+            <!-- emit colgroups -->
+            <xsl:call-template name="emit-colgroups"/>
+            <!-- emit body rows -->
             <xsl:apply-templates select="document/chart"/>
           </table>
         </div>
@@ -120,7 +146,34 @@
     </html>
   </xsl:template>
 
-  <!-- chart → tbody + rows -->
+  <!-- ===========================
+       Emit <colgroup> elements
+       =========================== -->
+  <xsl:template name="emit-colgroups">
+    <xsl:variable name="header" select="document/chart/row[@type='title1'][1]"/>
+    <xsl:if test="$header">
+      <xsl:variable name="cols-total" select="sum($header/cell/@cols | count($header/cell[not(@cols)]))"/>
+      <xsl:variable name="groupCount" select="count($header/cell)"/>
+      <xsl:for-each select="$header/cell">
+        <xsl:variable name="span">
+          <xsl:choose>
+            <xsl:when test="@cols"><xsl:value-of select="@cols"/></xsl:when>
+            <xsl:otherwise>1</xsl:otherwise>
+          </xsl:choose>
+        </xsl:variable>
+        <colgroup>
+          <xsl:attribute name="class">
+            <xsl:text>group</xsl:text><xsl:value-of select="position()"/>
+          </xsl:attribute>
+          <col>
+            <xsl:attribute name="span"><xsl:value-of select="$span"/></xsl:attribute>
+          </col>
+        </colgroup>
+      </xsl:for-each>
+    </xsl:if>
+  </xsl:template>
+
+  <!-- chart → tbody -->
   <xsl:template match="chart">
     <tbody>
       <xsl:apply-templates select="row"/>
@@ -144,142 +197,67 @@
       <xsl:attribute name="class">
         <xsl:value-of select="concat($rclass, $extra)"/>
       </xsl:attribute>
-      <!-- apply each cell -->
       <xsl:apply-templates select="cell"/>
     </tr>
   </xsl:template>
 
-  <!-- cell: decide th vs td based on ancestor row type -->
+  <!-- cell -->
   <xsl:template match="cell">
     <xsl:variable name="isHeader" select="parent::row[@type='title1' or @type='title2']"/>
-    <xsl:choose>
-      <xsl:when test="$isHeader">
-        <th>
-          <xsl:if test="@cols">
-            <xsl:attribute name="colspan"><xsl:value-of select="@cols"/></xsl:attribute>
-          </xsl:if>
-          <xsl:attribute name="class">
-            <xsl:if test="@reversed='true'">cell reversed</xsl:if>
-            <xsl:if test="not(@reversed='true')">cell</xsl:if>
-          </xsl:attribute>
-          <xsl:apply-templates select="main|glosses"/>
-        </th>
-      </xsl:when>
-      <xsl:otherwise>
-        <td>
-          <xsl:if test="@cols">
-            <xsl:attribute name="colspan"><xsl:value-of select="@cols"/></xsl:attribute>
-          </xsl:if>
-          <xsl:attribute name="class">
-            <xsl:if test="@reversed='true'">cell reversed</xsl:if>
-            <xsl:if test="not(@reversed='true')">cell</xsl:if>
-          </xsl:attribute>
-          <xsl:apply-templates select="main|glosses"/>
-        </td>
-      </xsl:otherwise>
-    </xsl:choose>
+    <xsl:variable name="tag">
+      <xsl:choose>
+        <xsl:when test="$isHeader">th</xsl:when>
+        <xsl:otherwise>td</xsl:otherwise>
+      </xsl:choose>
+    </xsl:variable>
+    <xsl:element name="{$tag}">
+      <xsl:if test="@cols">
+        <xsl:attribute name="colspan"><xsl:value-of select="@cols"/></xsl:attribute>
+      </xsl:if>
+      <xsl:attribute name="class">
+        <xsl:text>cell</xsl:text>
+        <xsl:if test="@reversed='true'"> reversed</xsl:if>
+      </xsl:attribute>
+      <xsl:apply-templates select="main|glosses"/>
+    </xsl:element>
   </xsl:template>
 
-  <!-- main: render interlinear tokens
-       Strategy: iterate children of main in document order.
-       For each child token we output:
-         - a span.w in grid-row 1 with token text
-         - a corresponding span.g in grid-row 2 (for word tokens we pull matching gloss by index, otherwise empty)
-  -->
+  <!-- main: interlinear text -->
   <xsl:template match="main">
     <div class="interlinear">
-      <!-- iterate tokens: word, lit, listRef, clauseMkr, rownum, note (others just output) -->
       <xsl:for-each select="*">
         <xsl:choose>
-          <!-- WORD token -->
           <xsl:when test="name()='word'">
-            <!-- compute which word index this is within this 'main' -->
-            <xsl:variable name="wi" select="count(preceding-sibling::word) + 1"/>
-            <span class="w">
-              <xsl:value-of select="."/>
-              <!-- add (no)space logic: if this element has @noSpaceAfter='true' OR next sibling has @noSpaceBefore='true', don't emit space -->
-              <xsl:if test="not(@noSpaceAfter='true' or following-sibling::*[1][@noSpaceBefore='true'])">
-                <xsl:text> </xsl:text>
-              </xsl:if>
-            </span>
-            <span class="g">
-              <!-- pick corresponding gloss from the sibling glosses element in the same cell -->
-              <xsl:value-of select="../following-sibling::glosses[1]/gloss[$wi] | ../glosses/gloss[$wi]"/>
-            </span>
+            <xsl:variable name="wi" select="count(preceding-sibling::word)+1"/>
+            <span class="w"><xsl:value-of select="."/></span>
+            <span class="g"><xsl:value-of select="../following-sibling::glosses[1]/gloss[$wi] | ../glosses/gloss[$wi]"/></span>
           </xsl:when>
-
-          <!-- LIT token (punctuation or bracket) -->
           <xsl:when test="name()='lit'">
-            <span class="w">
-              <xsl:value-of select="."/>
-              <xsl:if test="not(@noSpaceAfter='true' or following-sibling::*[1][@noSpaceBefore='true'])">
-                <xsl:text> </xsl:text>
-              </xsl:if>
-            </span>
-            <span class="g"/><!-- empty gloss cell -->
+            <span class="w"><xsl:value-of select="."/></span><span class="g"/>
           </xsl:when>
-
-          <!-- listRef -->
           <xsl:when test="name()='listRef'">
-            <span class="w listRef">
-              <xsl:value-of select="."/>
-              <xsl:if test="not(@noSpaceAfter='true' or following-sibling::*[1][@noSpaceBefore='true'])">
-                <xsl:text> </xsl:text>
-              </xsl:if>
-            </span>
-            <span class="g"/>
+            <span class="w listRef"><xsl:value-of select="."/></span><span class="g"/>
           </xsl:when>
-
-          <!-- clauseMkr -->
           <xsl:when test="name()='clauseMkr'">
-            <span class="w clauseMkr">
-              <xsl:value-of select="."/>
-              <xsl:if test="not(@noSpaceAfter='true' or following-sibling::*[1][@noSpaceBefore='true'])">
-                <xsl:text> </xsl:text>
-              </xsl:if>
-            </span>
-            <span class="g"/>
+            <span class="w clauseMkr"><xsl:value-of select="."/></span><span class="g"/>
           </xsl:when>
-
-          <!-- rownum -->
           <xsl:when test="name()='rownum'">
-            <span class="w rownum">
-              <xsl:value-of select="."/>
-              <xsl:if test="not(@noSpaceAfter='true' or following-sibling::*[1][@noSpaceBefore='true'])">
-                <xsl:text> </xsl:text>
-              </xsl:if>
-            </span>
-            <span class="g"/>
+            <span class="w rownum"><xsl:value-of select="."/></span><span class="g"/>
           </xsl:when>
-
-          <!-- note -->
           <xsl:when test="name()='note'">
-            <span class="w note">
-              <xsl:value-of select="."/>
-            </span>
-            <span class="g"/>
+            <span class="w note"><xsl:value-of select="."/></span><span class="g"/>
           </xsl:when>
-
-          <!-- fallback for unexpected children -->
           <xsl:otherwise>
-            <span class="w">
-              <xsl:value-of select="."/>
-            </span>
-            <span class="g"/>
+            <span class="w"><xsl:value-of select="."/></span><span class="g"/>
           </xsl:otherwise>
         </xsl:choose>
       </xsl:for-each>
     </div>
   </xsl:template>
 
-  <!-- glosses: some cells may have a glosses element alone (we handled most gloss output in the word path),
-       but if we encounter glosses outside expected flow, we still emit a fallback -->
   <xsl:template match="glosses">
     <div class="glosses-fallback">
-      <xsl:for-each select="gloss">
-        <span class="g"><xsl:value-of select="."/></span>
-      </xsl:for-each>
+      <xsl:for-each select="gloss"><span class="g"><xsl:value-of select="."/></span></xsl:for-each>
     </div>
   </xsl:template>
-
 </xsl:stylesheet>
