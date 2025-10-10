@@ -11,13 +11,14 @@ This project is part of the Field Linguistics Extension Tools (FLET) project: [h
 
 FLEx XML Viewer renders common FLEx export types:
 
+- Discourse Charts (some work still needed, but very usable already)
 - Lists — hierarchical `<list>` structures as collapsible trees
 - Translated Lists — multilingual AUni-based lists with language ordering/visibility controls
 - Phonology — natural classes, phoneme inventories, cross-references, and codes
 - Wordforms — lexical items and analyses, with Card and Table views and filtering
 - Generic XML — fallback recursive tree for any well‑formed XML
 
-Not in scope: LIFT, FLExText (open those in FLEx), XLingPaper (open in XLingPaper), Word XML (open in Word), Discourse XML and Dekereke (see FLET project).
+Not in scope: LIFT, FLExText (open those in FLEx), XLingPaper (open in XLingPaper), Word XML (open in Word).
 
 ## Try it online (no install)
 
