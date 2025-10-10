@@ -56,6 +56,90 @@
   .table-view th,.table-view td{padding:8px;border-bottom:1px solid #eee;text-align:left}
   .controls-inline{display:flex;gap:8px;align-items:center;margin-bottom:8px}
   footer{margin-top:28px;padding-top:10px;border-top:1px solid #e6e6e6;color:var(--muted);font-size:0.9rem}
+  /* Print-friendly adjustments */
+@media print {
+  /* Page margins */
+  @page {
+    margin: 12mm;
+  }
+
+  /* High-contrast and color handling */
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Slightly tighter text to fit more per page */
+  :root {
+    --font-size: 12px;            /* was 14px */
+    --cell-border: 1px solid #000;
+    --header-border-thick: 2px solid #000;
+    --row-end-border: 1px solid #000;
+    --para-end-border: 2px solid #000;
+  }
+
+  /* Hide interactive chrome in print */
+  header, footer, .controls-row,
+  #openBtn, #saveBtn, #resetBtn, #transformBtn,
+  #fileInput, #xmlInput, .small-muted.controls,
+  .lang-controls, .controls-inline, .viewer .small-muted {
+    display: none !important;
+  }
+
+  /* Flatten the viewer card */
+  .viewer {
+    width: auto !important;       /* let it use full page width */
+    min-width: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Table layout for print */
+  .chartshell {
+    width: 100% !important;       /* fit page width */
+    border-collapse: collapse !important;
+    border-spacing: 0 !important;
+  }
+
+  /* Remove colored headers; rely on thicker borders */
+  .row.title1 th,
+  .row.title2 th {
+    background: transparent !important;
+  }
+
+  /* Solid borders for cells and group rails */
+  .chartshell th, .chartshell td {
+    border: 1px solid #000 !important;
+    padding: 6px 6px !important; /* a bit tighter for paper */
+  }
+  .chartshell th.group-end, .chartshell td.group-end {
+    border-right: 2px solid #000 !important;
+  }
+  .chartshell tr > .group-start:first-child {
+    border-left: 2px solid #000 !important;
+  }
+
+  /* Keep rows together if possible (browser support varies) */
+  .chartshell tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Interlinear: keep gloss readable in grayscale */
+  .interlinear .g {
+    color: #333 !important;
+  }
+
+  /* Optional: show link targets in print */
+  a[href]:after {
+    content: " (" attr(href) ")";
+    font-size: 0.9em;
+  }
+}
 </style>
 </head>
 <body>
