@@ -73,8 +73,9 @@ colgroup.group5 col {
 .row.song { color: var(--song-color); }
 
 /* Sentence/paragraph boundaries */
-.row.endSent { border-bottom: var(--row-end-border); }
-.row.endPara { border-bottom: var(--para-end-border); }
+/* Apply to cells so borders render with separate border model */
+.chartshell tr.endSent > th, .chartshell tr.endSent > td { border-bottom: var(--row-end-border); }
+.chartshell tr.endPara > th, .chartshell tr.endPara > td { border-bottom: var(--para-end-border); }
 
 /* reversed cell alignment */
 .cell.reversed { text-align: right; }

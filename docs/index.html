@@ -133,6 +133,13 @@
   .chartshell th.group-end, .chartshell td.group-end {
     border-right: 2px solid #000 !important;
   }
+  /* Preserve thicker sentence/paragraph end borders in print */
+  .chartshell tr.endSent > th, .chartshell tr.endSent > td {
+    border-bottom: var(--row-end-border) !important;
+  }
+  .chartshell tr.endPara > th, .chartshell tr.endPara > td {
+    border-bottom: var(--para-end-border) !important;
+  }
   .chartshell tr > .group-start:first-child {
     border-left: 2px solid #000 !important;
   }
@@ -313,12 +320,63 @@ byId('openBtn').addEventListener('click', ()=>{
   w.document.close();
 });
 
-byId('saveBtn').addEventListener('click', ()=>{
+function sanitizeFilename(name){
+  // Remove illegal characters for Windows/macOS, collapse spaces, and trim
+  return (name || 'export')
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+function getExportTitleFromPrologue(){
+  let exportTitle = 'FLEx XML View Export';
+  const render = byId('renderArea');
+  if(!render) return exportTitle;
+  const prologueNode = render.querySelector(':scope > .chart-prologue');
+  if (prologueNode) {
+    const h1 = prologueNode.querySelector('h1');
+    const anyHead = prologueNode.querySelector('h1,h2,h3,h4,h5,h6,div,p');
+    const titleNode = h1 || anyHead;
+    if (titleNode && titleNode.textContent) {
+      const t = titleNode.textContent.replace(/\s+/g, ' ').trim();
+      if (t) exportTitle = t;
+    }
+  }
+  return exportTitle;
+}
+function suggestExportFilename(){
+  const baseTitle = getExportTitleFromPrologue();
+  const hasChart = !!byId('renderArea')?.querySelector('table.chartshell');
+  const withContext = hasChart ? `${baseTitle} — Text Chart` : baseTitle;
+  let name = sanitizeFilename(withContext || 'FLEx XML View Export');
+  if(!/\.html?$/i.test(name)) name += '.html';
+  return name;
+}
+byId('saveBtn').addEventListener('click', async ()=>{
   const html = buildStandaloneHTML();
+  const filename = suggestExportFilename();
+  // Use File System Access API if available (Chrome/Edge/Electron Chromium)
+  if(window.showSaveFilePicker){
+    try{
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'HTML Document', accept: { 'text/html': ['.html', '.htm'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(new Blob([html], {type:'text/html'}));
+      await writable.close();
+      return;
+    } catch(err){
+      if(err && err.name === 'AbortError') return; // user canceled
+      console.warn('showSaveFilePicker failed, falling back to download:', err);
+      // fall through to anchor download
+    }
+  }
+  // Fallback: classic download
   const blob = new Blob([html], {type:'text/html'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'flex_xml_view.html';
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
 });
@@ -1262,6 +1320,76 @@ function buildStandaloneHTML(){
   let content = '';
   const prologueNode = render.querySelector(':scope > .chart-prologue');
   const clone = render.cloneNode(true);
+  // Helper: ensure destination table has individual <col> elements (no span)
+  function ensureIndividualCols(tbl){
+    const groups = Array.from(tbl.querySelectorAll('colgroup'));
+    groups.forEach(g=>{
+      const c = g.querySelector('col');
+      if(!c) return;
+      const span = Number(c.getAttribute('span')||'1');
+      if(span > 1){
+        c.removeAttribute('span');
+        const frag = document.createDocumentFragment();
+        for(let i=0;i<span;i++) frag.appendChild(document.createElement('col'));
+        g.replaceChild(frag, c);
+      }
+    });
+  }
+  // Helper: freeze current column widths from live table into the cloned table
+  function freezeChartColumnWidthsInClone(sourceRoot, cloneRoot){
+    const srcTbl = sourceRoot.querySelector('table.chartshell');
+    const dstTbl = cloneRoot.querySelector('table.chartshell');
+    if(!srcTbl || !dstTbl) return;
+    // Make sure destination has one <col> per column
+    ensureIndividualCols(dstTbl);
+    const dstCols = Array.from(dstTbl.querySelectorAll('col'));
+    if(!dstCols.length) return;
+    // Build widths array by measuring header (prefer title2), then fill from body rows as needed
+    const widths = new Array(dstCols.length).fill(0);
+    const srcHeader = srcTbl.querySelector('tr.row.title2') || srcTbl.querySelector('tr.row.title1');
+    let colIndex = 0;
+    if(srcHeader){
+      srcHeader.querySelectorAll('th.cell').forEach(th=>{
+        const span = Number(th.getAttribute('colspan')||'1');
+        const w = Math.max(0, Math.round(th.getBoundingClientRect().width));
+        const per = Math.max(0, Math.floor(w / span));
+        for(let i=0;i<span && (colIndex + i) < widths.length;i++){
+          widths[colIndex + i] = per;
+        }
+        colIndex += span;
+      });
+    }
+    const srcBodyRows = Array.from(srcTbl.querySelectorAll('tbody tr'));
+    function fillFromRow(row){
+      let idx = 0;
+      Array.from(row.children).forEach(td=>{
+        const span = Number(td.getAttribute('colspan')||'1');
+        const w = Math.max(0, Math.round(td.getBoundingClientRect().width));
+        const per = Math.max(0, Math.floor(w / span));
+        for(let i=0;i<span && (idx + i) < widths.length;i++){
+          if(widths[idx + i] === 0) widths[idx + i] = per;
+        }
+        idx += span;
+      });
+    }
+    if(widths.some(v=>v===0) && srcBodyRows.length){
+      for(let r=0; r<Math.min(10, srcBodyRows.length); r++){
+        fillFromRow(srcBodyRows[r]);
+        if(!widths.some(v=>v===0)) break;
+      }
+    }
+    // Apply a floor and assign to destination <col> style.width
+    for(let i=0;i<widths.length;i++){
+      const px = Math.max(40, widths[i] || 0);
+      if(dstCols[i]) dstCols[i].style.width = px + 'px';
+    }
+    // Enforce fixed layout so widths render consistently in the export
+    dstTbl.style.tableLayout = 'fixed';
+    dstTbl.style.width = 'auto';
+    dstTbl.style.maxWidth = '100%';
+  }
+  // Freeze widths before stripping interactive bits
+  try{ freezeChartColumnWidthsInClone(render, clone); }catch(_){ /* non-fatal */ }
   // Strip interactive resize handles from export
   clone.querySelectorAll('.col-resizer').forEach(el=> el.remove());
   // Also clear any resizable flags to avoid styling hooks
