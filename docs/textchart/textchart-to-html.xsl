@@ -152,21 +152,22 @@ colgroup.group5 col {
   <xsl:template name="emit-colgroups">
     <xsl:variable name="header" select="document/chart/row[@type='title1'][1]"/>
     <xsl:if test="$header">
-      <xsl:variable name="cols-total" select="sum($header/cell/@cols | count($header/cell[not(@cols)]))"/>
+      <!-- In XSLT 1.0, union '|' expects node-sets; avoid mixing with numbers -->
+      <xsl:variable name="cols-total" select="sum($header/cell/@cols) + count($header/cell[not(@cols)])"/>
       <xsl:variable name="groupCount" select="count($header/cell)"/>
       <xsl:for-each select="$header/cell">
-        <xsl:variable name="span">
-          <xsl:choose>
-            <xsl:when test="@cols"><xsl:value-of select="@cols"/></xsl:when>
-            <xsl:otherwise>1</xsl:otherwise>
-          </xsl:choose>
-        </xsl:variable>
+        <xsl:variable name="span" select="number(@cols)"/>
         <colgroup>
           <xsl:attribute name="class">
             <xsl:text>group</xsl:text><xsl:value-of select="position()"/>
           </xsl:attribute>
           <col>
-            <xsl:attribute name="span"><xsl:value-of select="$span"/></xsl:attribute>
+            <xsl:attribute name="span">
+              <xsl:choose>
+                <xsl:when test="@cols"><xsl:value-of select="$span"/></xsl:when>
+                <xsl:otherwise>1</xsl:otherwise>
+              </xsl:choose>
+            </xsl:attribute>
           </col>
         </colgroup>
       </xsl:for-each>

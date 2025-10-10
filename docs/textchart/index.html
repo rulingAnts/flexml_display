@@ -26,11 +26,17 @@
   }
 
   async function loadXSL() {
-    const url = cacheBust("chart-to-html.xsl");
+    // Load the newer stylesheet with colgroup logic
+    const url = cacheBust("textchart-to-html.xsl");
     const resp = await fetch(url);
     if (!resp.ok) throw new Error("Failed to fetch XSL: " + resp.status);
     const txt = await resp.text();
-    return new DOMParser().parseFromString(txt, "text/xml");
+    const doc = new DOMParser().parseFromString(txt, "text/xml");
+    const xslErr = doc.getElementsByTagName("parsererror")[0];
+    if (xslErr) {
+      throw new Error("XSL parse error: " + xslErr.textContent.trim());
+    }
+    return doc;
   }
 
   async function handleFile(e) {
@@ -44,6 +50,10 @@
       ]);
       document.getElementById("status").textContent = "Parsing XML...";
       const xmlDoc = new DOMParser().parseFromString(xmlText, "text/xml");
+      const xmlErr = xmlDoc.getElementsByTagName("parsererror")[0];
+      if (xmlErr) {
+        throw new Error("XML parse error: " + xmlErr.textContent.trim());
+      }
 
       if (!window.XSLTProcessor) {
         document.getElementById("status").textContent = "XSLTProcessor not supported in this browser.";
@@ -58,8 +68,9 @@
       out.appendChild(frag);
       document.getElementById("status").textContent = "Rendered successfully.";
     } catch (err) {
-      document.getElementById("status").textContent = "Error: " + err.message;
-      console.error(err);
+      const status = document.getElementById("status");
+      status.textContent = "Error: " + (err && err.message ? err.message : String(err));
+      console.error("Transform error", err);
     }
   }
 
