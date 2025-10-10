@@ -2,6 +2,9 @@
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
   <xsl:output method="html" encoding="UTF-8" indent="yes"/>
 
+  <!-- Debug toggle: when 'true', visible warning messages are shown in cells with data issues. -->
+  <xsl:param name="debug" select="'false'"/>
+
   <!-- ========================
        CSS / style variables
        ======================== -->
@@ -108,6 +111,11 @@ colgroup.group5 col {
 .chartshell tr > .group-start:first-child {
   border-left: var(--header-border-thick);
 }
+
+/* Debug warnings */
+.warn { color: #b91c1c; font-style: italic; font-size: 0.9em; }
+.warn-no-words-glosses {}
+.warn-gloss-count-mismatch {}
 ]]>
   </xsl:variable>
 
@@ -276,6 +284,26 @@ colgroup.group5 col {
       </xsl:attribute>
       <!-- Render interlinear content; no fallback glosses -->
       <xsl:apply-templates select="main"/>
+
+      <!-- Diagnostics: glosses without words, or mismatched counts -->
+      <xsl:variable name="wordCount" select="count(main/word)"/>
+      <xsl:variable name="glossCount" select="count(glosses/gloss)"/>
+
+      <!-- Always include an HTML comment when issues are detected -->
+      <xsl:if test="$glossCount &gt; 0 and $wordCount = 0">
+        <xsl:comment> Warning: glosses present with no words (glossCount: <xsl:value-of select="$glossCount"/>) </xsl:comment>
+      </xsl:if>
+      <xsl:if test="$glossCount &gt; 0 and $wordCount &gt; 0 and $glossCount != $wordCount">
+        <xsl:comment> Warning: gloss/word count mismatch (words: <xsl:value-of select="$wordCount"/>, glosses: <xsl:value-of select="$glossCount"/>) </xsl:comment>
+      </xsl:if>
+
+      <!-- If debug mode is on, show visible warnings -->
+      <xsl:if test="$debug='true' and $glossCount &gt; 0 and $wordCount = 0">
+        <div class="warn warn-no-words-glosses">Warning: glosses present with no words.</div>
+      </xsl:if>
+      <xsl:if test="$debug='true' and $glossCount &gt; 0 and $wordCount &gt; 0 and $glossCount != $wordCount">
+        <div class="warn warn-gloss-count-mismatch">Warning: gloss/word count mismatch (words: <xsl:value-of select="$wordCount"/>, glosses: <xsl:value-of select="$glossCount"/>)</div>
+      </xsl:if>
     </xsl:element>
   </xsl:template>
 

@@ -44,6 +44,8 @@
     if (!file) return;
     document.getElementById("status").textContent = "Loading XSL...";
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const debugQuery = (v => v !== null && ["1","true","yes","on"].includes(v.toLowerCase()))(urlParams.get("debug"));
       const [xslDoc, xmlText] = await Promise.all([
         loadXSL(),
         file.text()
@@ -62,6 +64,10 @@
 
       const proc = new XSLTProcessor();
       proc.importStylesheet(xslDoc);
+      if (debugQuery) {
+        // Pass debug=true into the stylesheet
+        proc.setParameter(null, "debug", "true");
+      }
       const frag = proc.transformToFragment(xmlDoc, document);
       const out = document.getElementById("output");
       out.innerHTML = "";
