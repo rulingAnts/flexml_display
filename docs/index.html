@@ -66,6 +66,18 @@
   .wordform-main{font-weight:700;font-size:1.05rem}
   .wordform-meta{color:var(--muted);font-size:0.9rem}
   .wordform-body{margin-top:8px}
+  /* Abbreviations UI and rendered block */
+  .abbrev-panel{display:none;margin-top:10px;background:#fff8f0;border:1px solid #ffe2bf;padding:10px 12px;border-radius:8px}
+  .abbrev-grid{display:grid;grid-template-columns:160px 1fr;gap:8px 10px;align-items:center}
+  .abbrev-grid input[type=text]{width:100%;padding:6px;border:1px solid var(--border);border-radius:6px}
+  .abbrev-grid .rows{grid-column:1 / -1}
+  .abbr-row{display:grid;grid-template-columns:auto 1fr 2fr;gap:8px;margin-bottom:6px;align-items:center}
+  .abbr-row input{min-width:0}
+  .abbr-abbr{font-family:monospace;padding:4px 6px;border:1px solid #e5e5e5;border-radius:6px;background:#f7f7f7;white-space:nowrap}
+  .chart-abbrev-block{border:1px solid #eee;padding:8px 10px;border-radius:6px;background:linear-gradient(#fff,#fcfcf8);margin:10px 0}
+  .chart-abbrev-block h3{margin:0 0 6px 0;font-size:1rem}
+  .chart-abbrev-block ul{margin:0;padding-left:18px}
+  .chart-abbrev-block li{margin:3px 0}
   .table-view{width:100%;border-collapse:collapse}
   .table-view th,.table-view td{padding:8px;border-bottom:1px solid #eee;text-align:left}
   .controls-inline{display:flex;gap:8px;align-items:center;margin-bottom:8px}
@@ -162,6 +174,8 @@
   }
   /* Don't print column resize handles */
   .col-resizer { display: none !important; }
+  /* Keep abbreviations list together if possible */
+  .chart-abbrev-block { break-inside: avoid; page-break-inside: avoid; }
 }
 </style>
 </head>
@@ -251,6 +265,32 @@
   </div>
 </div>
 
+<!-- Abbreviations list (labels + optional definitions) -->
+<div id="abbrevPanel" class="abbrev-panel" aria-live="polite">
+  <div class="small-muted" style="margin-bottom:8px;font-weight:600">Abbreviations (from listRef tokens)</div>
+  <div class="abbrev-grid">
+    <label for="abbrevInclude">Include list</label>
+    <label style="display:flex;align-items:center;gap:8px">
+      <input id="abbrevInclude" type="checkbox" checked> Include abbreviations in output
+    </label>
+
+    <label for="abbrevPosition">Position</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="abbrevPosition">
+        <option value="top">Top (below title/preface)</option>
+        <option value="bottom">Bottom (after chart)</option>
+      </select>
+      <button id="abbrevResetFromChart" class="small-btn secondary" title="Re-scan listRef items from chart">Reset from chart</button>
+    </div>
+
+    <div class="rows">
+  <div class="small-muted" style="margin:6px 0">Each abbreviation is fixed from the chart. Edit a Name and optional Description:</div>
+      <div id="abbrevRows"></div>
+      <div id="abbrevEmptyMsg" class="small-muted" style="display:none">No listRef items found in this chart.</div>
+    </div>
+  </div>
+</div>
+
 <div id="viewer" class="viewer" aria-live="polite">
   <div id="renderArea" class="small-muted">Paste or upload an XML file, then click Transform.</div>
 </div>
@@ -280,13 +320,16 @@ const LANG_PREFS_KEY = 'flex_xml_viewer_lang_prefs_v1';
 const WORDFORM_PREFS_KEY = 'flex_xml_viewer_wordform_prefs_v1';
 const TEXTCHART_PROLOGUE_KEY = 'flex_textchart_prologue_v1';
 const PRINT_HEADERS_KEY = 'flex_textchart_repeat_headers_v1';
+const ABBREV_PREFS_KEY = 'flex_textchart_abbrevs_v1';
 
 let globalState = {
   phonemeIndex: {},
   idToNatclassIds: {},
   natclassElements: {},
   phonemeRowIds: {},
-  showNames: false
+  showNames: false,
+  chartAbbrevLabels: [],
+  abbrevPrefs: null
 };
 
 function saveJSON(key, obj){ try{ localStorage.setItem(key, JSON.stringify(obj)); } catch(e){} }
@@ -497,6 +540,123 @@ function initPrologueControls(){
 // Ensure controls are initialized on load
 initPrologueControls();
 function showProloguePanel(show){ byId('prologuePanel').style.display = show ? 'block' : 'none'; }
+/* ===== Abbreviations (listRef) controls and render ===== */
+function collectListRefLabelsFromXml(xmlDoc){
+  if(!xmlDoc) return [];
+  const nodes = Array.from(xmlDoc.getElementsByTagName('listRef'));
+  const set = new Set();
+  nodes.forEach(n=>{
+    const t = (n.textContent || '').trim();
+    if(t) set.add(t);
+  });
+  return Array.from(set).sort((a,b)=> a.localeCompare(b, undefined, { numeric:true, sensitivity:'base' }));
+}
+function loadAbbrevPrefs(){
+  const d = loadJSON(ABBREV_PREFS_KEY) || {};
+  return {
+    include: typeof d.include === 'boolean' ? d.include : true,
+    position: d.position === 'bottom' ? 'bottom' : 'top',
+    entries: d.entries || {}
+  };
+}
+function saveAbbrevPrefs(p){ saveJSON(ABBREV_PREFS_KEY, p); }
+function reconcileAbbrevPrefsWithLabels(prefs, labels){
+  const out = { include: prefs.include, position: prefs.position, entries: { ...prefs.entries } };
+  // Remove entries not in labels
+  Object.keys(out.entries).forEach(k=>{ if(!labels.includes(k)) delete out.entries[k]; });
+  // Ensure entry for each label
+  labels.forEach(l=>{
+    if(!out.entries[l]){
+      out.entries[l] = { abbr: l, name: '', def: '' };
+    } else {
+      // migrate legacy shape {label, def} where label was previously editable: treat it as name
+      const e = out.entries[l];
+      if(e.label !== undefined && e.name === undefined){ e.name = e.label || ''; delete e.label; }
+      if(e.abbr === undefined) e.abbr = l;
+      if(e.def === undefined) e.def = '';
+    }
+  });
+  return out;
+}
+function showAbbrevPanel(show){ byId('abbrevPanel').style.display = show ? 'block' : 'none'; }
+function buildAbbrevControls(labels){
+  const panel = byId('abbrevPanel'); if(!panel) return;
+  const includeCb = byId('abbrevInclude');
+  const posSel = byId('abbrevPosition');
+  const rowsHost = byId('abbrevRows');
+  const emptyMsg = byId('abbrevEmptyMsg');
+  const resetBtn = byId('abbrevResetFromChart');
+  globalState.abbrevPrefs = reconcileAbbrevPrefsWithLabels(loadAbbrevPrefs(), labels);
+  includeCb.checked = !!globalState.abbrevPrefs.include;
+  posSel.value = globalState.abbrevPrefs.position;
+  function renderRows(){
+    rowsHost.innerHTML = '';
+    const keys = Object.keys(globalState.abbrevPrefs.entries);
+    emptyMsg.style.display = keys.length ? 'none' : 'block';
+    keys.sort((a,b)=> a.localeCompare(b, undefined, {numeric:true,sensitivity:'base'})).forEach(k=>{
+      const ent = globalState.abbrevPrefs.entries[k];
+      const row = document.createElement('div'); row.className = 'abbr-row';
+      const abbrEl = document.createElement('span'); abbrEl.className = 'abbr-abbr'; abbrEl.textContent = ent.abbr || k;
+      const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = ent.name || ''; nameIn.placeholder = 'Name';
+      const defIn = document.createElement('input'); defIn.type = 'text'; defIn.value = ent.def || ''; defIn.placeholder = 'Description (optional)';
+      nameIn.addEventListener('input', ()=>{ ent.name = nameIn.value; saveAbbrevPrefs(globalState.abbrevPrefs); applyAbbrevToRenderArea(globalState.abbrevPrefs); });
+      defIn.addEventListener('input', ()=>{ ent.def = defIn.value; saveAbbrevPrefs(globalState.abbrevPrefs); applyAbbrevToRenderArea(globalState.abbrevPrefs); });
+      row.appendChild(abbrEl); row.appendChild(nameIn); row.appendChild(defIn);
+      rowsHost.appendChild(row);
+    });
+  }
+  if(panel.dataset.wired !== '1'){
+    includeCb.addEventListener('change', ()=>{ globalState.abbrevPrefs.include = !!includeCb.checked; saveAbbrevPrefs(globalState.abbrevPrefs); applyAbbrevToRenderArea(globalState.abbrevPrefs); });
+    posSel.addEventListener('change', ()=>{ globalState.abbrevPrefs.position = posSel.value === 'bottom' ? 'bottom':'top'; saveAbbrevPrefs(globalState.abbrevPrefs); applyAbbrevToRenderArea(globalState.abbrevPrefs); });
+    resetBtn.addEventListener('click', ()=>{
+      globalState.abbrevPrefs = reconcileAbbrevPrefsWithLabels(globalState.abbrevPrefs, globalState.chartAbbrevLabels || []);
+      saveAbbrevPrefs(globalState.abbrevPrefs); renderRows(); applyAbbrevToRenderArea(globalState.abbrevPrefs);
+    });
+    panel.dataset.wired = '1';
+  }
+  saveAbbrevPrefs(globalState.abbrevPrefs);
+  renderRows();
+  // Apply immediately to current render
+  applyAbbrevToRenderArea(globalState.abbrevPrefs);
+}
+function applyAbbrevToRenderArea(prefs){
+  const area = byId('renderArea'); if(!area) return;
+  // Remove any existing blocks
+  area.querySelectorAll(':scope > .chart-abbrev-block').forEach(n=> n.remove());
+  if(!prefs || !prefs.include) return;
+  const entries = Object.values(prefs.entries || {});
+  if(!entries.length) return;
+  const block = document.createElement('div'); block.className = 'chart-abbrev-block';
+  const heading = document.createElement('h3'); heading.textContent = 'Abbreviations'; block.appendChild(heading);
+  const list = document.createElement('ul');
+  entries
+    .sort((a,b)=> (a.abbr||'').localeCompare(b.abbr||'', undefined, {numeric:true,sensitivity:'base'}))
+    .forEach(ent=>{
+      const li = document.createElement('li');
+      const abbr = (ent.abbr || '').trim();
+      const name = (ent.name || '').trim();
+      const def = (ent.def || '').trim();
+      if(!abbr) return; // must have abbreviation
+      let tail = '';
+      if(name && def) tail = ` — ${escapeHtml(name)} — ${escapeHtml(def)}`;
+      else if(name) tail = ` — ${escapeHtml(name)}`;
+      else if(def) tail = ` — ${escapeHtml(def)}`;
+      li.innerHTML = `<strong>${escapeHtml(abbr)}</strong>${tail}`;
+      list.appendChild(li);
+    });
+  if(!list.childNodes.length) return;
+  block.appendChild(list);
+  // Insert at chosen position
+  const prologue = area.querySelector(':scope > .chart-prologue');
+  const table = area.querySelector('table.chartshell')?.closest('.chartshell-wrapper') || area.querySelector('table.chartshell');
+  if(prefs.position === 'top'){
+    if(prologue && prologue.nextSibling) area.insertBefore(block, prologue.nextSibling);
+    else area.insertBefore(block, area.firstChild || null);
+  } else {
+    if(table && table.nextSibling) area.insertBefore(block, table.nextSibling);
+    else area.appendChild(block);
+  }
+}
 function applyPrologueToRenderArea(prefs){
   const area = byId('renderArea');
   if(!area) return;
@@ -550,10 +710,16 @@ async function renderDocument(xmlDoc){
     // Show prologue controls and inject current prologue before the chart
     showProloguePanel(true);
     applyPrologueToRenderArea(loadProloguePrefs());
+    // Scan listRef abbreviations and show Abbrev controls
+    globalState.chartAbbrevLabels = collectListRefLabelsFromXml(xmlDoc);
+    showAbbrevPanel(true);
+    buildAbbrevControls(globalState.chartAbbrevLabels);
     if(rendered){
       area.appendChild(rendered);
       // Enable column resizing on the text chart table
       enableTextChartColumnResize(area);
+      // Ensure abbreviations block is positioned correctly relative to chart
+      applyAbbrevToRenderArea(globalState.abbrevPrefs || loadAbbrevPrefs());
     }
     else { area.textContent = 'Failed to render Text Chart.'; }
     // Show print-headers toggle when a Text Chart is displayed
@@ -571,6 +737,7 @@ async function renderDocument(xmlDoc){
   // Order of detection: Phonology, Translated Lists (AUni multi), Monolingual list, Wordforms, Generic
   if(tag === 'phonology'){
     showProloguePanel(false);
+    showAbbrevPanel(false);
     area.appendChild(renderPhonologyView(xmlDoc));
     return;
   }
@@ -581,10 +748,12 @@ async function renderDocument(xmlDoc){
     const langSet = new Set(Array.from(aunis).map(a => a.getAttribute('ws')));
     if(langSet.size > 1){
       showProloguePanel(false);
+      showAbbrevPanel(false);
       area.appendChild(renderTranslatedListView(root, Array.from(langSet)));
       return;
     } else {
       showProloguePanel(false);
+      showAbbrevPanel(false);
       area.appendChild(renderListView(root));
       return;
     }
@@ -594,12 +763,14 @@ async function renderDocument(xmlDoc){
   const wfNodes = xmlDoc.getElementsByTagName('wordforms');
   if(wfNodes && wfNodes.length > 0){
     showProloguePanel(false);
+    showAbbrevPanel(false);
     area.appendChild(renderWordformsView(xmlDoc));
     return;
   }
 
   // fallback generic
   showProloguePanel(false);
+  showAbbrevPanel(false);
   area.appendChild(renderGenericView(root));
   // Hide print-headers toggle for non-TextChart views
   const rhc = byId('repeatHeadersContainer');
