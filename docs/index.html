@@ -348,6 +348,7 @@
           <button id="listRefToggleOrder" class="small-btn secondary" title="Toggle ordering direction">(top → bottom)</button>
           <button id="listRefShowAll" class="small-btn" title="Show all abbreviations">Show all</button>
           <button id="listRefHideAll" class="small-btn secondary" title="Hide all abbreviations">Hide all</button>
+          <button id="listRefResetAllStyles" class="small-btn secondary" title="Clear styles for all groups and items (keep visibility/order)">Reset all styles</button>
           <button id="listRefResetOrder" class="small-btn secondary" title="Reset order to most prevalent pattern from this chart">Reset order</button>
         </div>
       </div>
@@ -722,6 +723,7 @@ function buildListRefControls(labels, suggestedOrder){
   const dirBtn = byId('listRefToggleOrder');
   const showAllBtn = byId('listRefShowAll');
   const hideAllBtn = byId('listRefHideAll');
+  const resetAllStylesBtn = byId('listRefResetAllStyles');
   const addGroupBtn = byId('listRefAddGroup');
   const newGroupNameIn = byId('listRefNewGroupName');
   let prefs = reconcileListRefPrefs(loadListRefPrefs(), labels, suggestedOrder||[]);
@@ -732,6 +734,11 @@ function buildListRefControls(labels, suggestedOrder){
   updateDirButton();
   if(showAllBtn){ showAllBtn.addEventListener('click', ()=>{ Object.values(prefs.entries).forEach(e=> e.hidden=false); persist(); applyListRefPrefsToArea(); renderRows(); }); }
   if(hideAllBtn){ hideAllBtn.addEventListener('click', ()=>{ Object.values(prefs.entries).forEach(e=> e.hidden=true); persist(); applyListRefPrefsToArea(); renderRows(); }); }
+  if(resetAllStylesBtn){ resetAllStylesBtn.addEventListener('click', ()=>{
+    Object.values(prefs.entries).forEach(e=>{ e.bold=false; e.italic=false; e.underline=false; e.fontSize=''; e.color=''; });
+    (prefs.groups||[]).forEach(g=>{ g.styles = g.styles || {}; g.styles.bold=false; g.styles.italic=false; g.styles.underline=false; g.styles.fontSize=''; g.styles.color=''; });
+    persist(); applyListRefPrefsToArea(); renderRows();
+  }); }
   if(addGroupBtn){ addGroupBtn.addEventListener('click', ()=>{
     const name = (newGroupNameIn?.value || '').trim() || 'Group';
     const id = 'g_' + Date.now().toString(36) + '_' + Math.floor(Math.random()*1000);
@@ -770,8 +777,10 @@ function buildListRefControls(labels, suggestedOrder){
         const colorWrap = document.createElement('span'); colorWrap.className='lr-chip'; colorWrap.title='Text color'; colorWrap.appendChild(colorIn);
         const sizeWrap = document.createElement('span'); sizeWrap.className='lr-chip'; sizeWrap.title='Font size (px)'; sizeWrap.appendChild(sizeIn);
         // Remove group
-        const del = document.createElement('button'); del.className='small-btn secondary'; del.textContent='Remove group'; del.addEventListener('click', ()=>{ prefs.groups.splice(gi,1); persist(); renderRows(); applyListRefPrefsToArea(); });
-        header.appendChild(upBtn); header.appendChild(dnBtn); header.appendChild(nameIn); header.appendChild(hideBtn); header.appendChild(b); header.appendChild(i); header.appendChild(u); header.appendChild(sizeWrap); header.appendChild(colorWrap); header.appendChild(del);
+  const resetStyleBtn = document.createElement('button'); resetStyleBtn.className='small-btn secondary'; resetStyleBtn.textContent='Reset style'; resetStyleBtn.title='Clear B/I/U, size, and color for this group (keep visibility)';
+  resetStyleBtn.addEventListener('click', ()=>{ g.styles.bold=false; g.styles.italic=false; g.styles.underline=false; g.styles.fontSize=''; g.styles.color=''; persist(); applyListRefPrefsToArea(); renderRows(); });
+  const del = document.createElement('button'); del.className='small-btn secondary'; del.textContent='Remove group'; del.addEventListener('click', ()=>{ prefs.groups.splice(gi,1); persist(); renderRows(); applyListRefPrefsToArea(); });
+  header.appendChild(upBtn); header.appendChild(dnBtn); header.appendChild(nameIn); header.appendChild(hideBtn); header.appendChild(b); header.appendChild(i); header.appendChild(u); header.appendChild(sizeWrap); header.appendChild(colorWrap); header.appendChild(resetStyleBtn); header.appendChild(del);
         groupDiv.appendChild(header);
         // Items selector
         const itemsDiv = document.createElement('div'); itemsDiv.className='lr-group-items';
@@ -824,10 +833,13 @@ function buildListRefControls(labels, suggestedOrder){
       sizeIn.addEventListener('input', ()=>{ ent.fontSize = sizeIn.value; persist(); applyListRefPrefsToArea(); });
       const colorIn = document.createElement('input'); colorIn.type='color'; colorIn.value = ent.color || '#000000'; colorIn.title = 'Text color'; colorIn.addEventListener('input', ()=>{ ent.color = colorIn.value; persist(); applyListRefPrefsToArea(); });
       styleControls.appendChild(b); styleControls.appendChild(i); styleControls.appendChild(u);
-      const sizeWrap = document.createElement('span'); sizeWrap.className='lr-chip'; sizeWrap.title='Font size (px)'; sizeWrap.appendChild(sizeIn);
+  const sizeWrap = document.createElement('span'); sizeWrap.className='lr-chip'; sizeWrap.title='Font size (px)'; sizeWrap.appendChild(sizeIn);
       const colorWrap = document.createElement('span'); colorWrap.className='lr-chip'; colorWrap.title='Text color'; colorWrap.appendChild(colorIn);
-      styleControls.appendChild(sizeWrap);
+  const resetStyleBtn = document.createElement('button'); resetStyleBtn.className='small-btn secondary'; resetStyleBtn.textContent='Reset style'; resetStyleBtn.title='Clear B/I/U, size, and color for this item (keep visibility)';
+  resetStyleBtn.addEventListener('click', ()=>{ ent.bold=false; ent.italic=false; ent.underline=false; ent.fontSize=''; ent.color=''; persist(); applyListRefPrefsToArea(); renderHiddenVisual(); });
+  styleControls.appendChild(sizeWrap);
       styleControls.appendChild(colorWrap);
+  styleControls.appendChild(resetStyleBtn);
       row.appendChild(styleControls);
       function renderHiddenVisual(){ if(ent.hidden) abbr.classList.add('is-hidden'); else abbr.classList.remove('is-hidden'); }
       renderHiddenVisual();
