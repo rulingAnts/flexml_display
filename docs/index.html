@@ -160,6 +160,8 @@
     content: " (" attr(href) ")";
     font-size: 0.9em;
   }
+  /* Don't print column resize handles */
+  .col-resizer { display: none !important; }
 }
 </style>
 </head>
@@ -1451,11 +1453,10 @@ function buildStandaloneHTML(){
   }
   // Freeze widths before stripping interactive bits
   try{ freezeChartColumnWidthsInClone(render, clone); }catch(_){ /* non-fatal */ }
-  // Strip interactive resize handles from export
-  clone.querySelectorAll('.col-resizer').forEach(el=> el.remove());
-  // Also clear any resizable flags to avoid styling hooks
-  clone.querySelectorAll('table.chartshell[data-resizable]')
-    .forEach(tbl=> tbl.removeAttribute('data-resizable'));
+  // Keep column resizers in export so users can continue adjusting widths
+  // Ensure destination table is marked as resizable for any styling hooks (optional)
+  const dstTblForFlag = clone.querySelector('table.chartshell');
+  if (dstTblForFlag) dstTblForFlag.setAttribute('data-resizable', '1');
   if(prologueNode){
     content += prologueNode.outerHTML; // put prologue first
     const cPrologue = clone.querySelector(':scope > .chart-prologue');
@@ -1527,7 +1528,81 @@ ${content}
       }
     });
   });
-  // Note: Resizing is intentionally disabled in exported files.
+  // Re-enable column resizing for Text Chart in exported document
+  (function(){
+    function wireHandleDrag(handle, allCols){
+      let startX = 0, startWidth = 0, colEl = null;
+      function computeMinColWidth(tbl, idx){
+        let minW = 40;
+        const rows = Array.from(tbl.querySelectorAll('tbody tr')).slice(0, 200);
+        rows.forEach(row=>{
+          let ci = 0; let cell = null;
+          Array.from(row.children).some(td=>{
+            const sp = Number(td.getAttribute('colspan')||'1');
+            const covers = (idx >= ci) && (idx < ci + sp);
+            ci += sp; if(covers){ cell = td; return true; } return false;
+          });
+          if(cell){
+            let pairs = cell.querySelectorAll('.interlinear .pair:not(.note)');
+            if(!pairs.length) pairs = cell.querySelectorAll('.interlinear .pair');
+            pairs.forEach(p=>{ const w = Math.ceil(p.getBoundingClientRect().width); if(w > minW) minW = w; });
+          }
+        });
+        return Math.max(40, minW);
+      }
+      function onMove(e){
+        const dx = e.clientX - startX;
+        const tbl = handle.closest('table');
+        const idx = Number(handle.dataset.colEnd||'0');
+        const minAllowed = computeMinColWidth(tbl, idx);
+        const newW = Math.max(minAllowed, startWidth + dx);
+        colEl.style.width = newW + 'px';
+        handle.classList.add('dragging');
+      }
+      function onUp(){
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('dragging');
+      }
+      handle.addEventListener('mousedown', (e)=>{
+        e.preventDefault();
+        const idx = Number(handle.dataset.colEnd||'0');
+        colEl = allCols[idx];
+        if(!colEl) return;
+        const tbl = handle.closest('table');
+        const bodyRow = tbl.querySelector('tbody tr');
+        let probeCell = null;
+        if(bodyRow){
+          let ci = 0; probeCell = Array.from(bodyRow.children).find(td=>{
+            const sp = Number(td.getAttribute('colspan')||'1');
+            const covers = (idx >= ci) && (idx < ci + sp);
+            ci += sp; return covers;
+          });
+        }
+        const rect = (probeCell || handle.parentElement).getBoundingClientRect();
+        if(!colEl.style.width){ colEl.style.width = Math.max(40, Math.round(rect.width)) + 'px'; }
+        startX = e.clientX;
+        startWidth = parseFloat(colEl.style.width) || Math.max(40, Math.round(rect.width));
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    }
+    function initExportResizing(){
+      const tbl = document.querySelector('table.chartshell');
+      if(!tbl) return;
+      // Ensure fixed layout and individual cols
+      tbl.style.tableLayout = 'fixed';
+      tbl.style.width = 'auto';
+      tbl.style.maxWidth = '100%';
+      const groups = Array.from(tbl.querySelectorAll('colgroup'));
+      const allCols = groups.flatMap(g => Array.from(g.querySelectorAll('col')));
+      // Re-wire existing handles
+      tbl.querySelectorAll('.col-resizer').forEach(h => wireHandleDrag(h, allCols));
+      tbl.setAttribute('data-resizable', '1');
+    }
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initExportResizing);
+    else initExportResizing();
+  })();
 <\/script>
 </body>
 </html>`;
