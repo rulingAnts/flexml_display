@@ -10,13 +10,8 @@
     --muted:#6c6c6c;
     --bg:#fbfbfb;
     --card:#fff;
-    --border:#e2e2e2;
-    --highlight:#fff2b8;
-  }
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:18px;background:var(--bg);color:#111}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-  h1{font-size:1.1rem;margin:0}
-  textarea{width:720px;max-width:100%;height:220px;font-family:monospace;padding:8px;border:1px solid var(--border);border-radius:6px;background:linear-gradient(#fff,#fcfcfc)}
+      const converted = convertTextOrHtmlToHtml(postHtml, !!auto);
+      content += `\n<div class=\"chart-epilogue\">${converted}</div>`;
   input[type=file]{padding:6px}
   button{background:var(--accent);color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
   button.secondary{background:#ddd;color:#111}
@@ -831,17 +826,11 @@ function applyEpilogueToRenderArea(prefs){
   // Remove existing epilogue block
   area.querySelectorAll(':scope > .chart-epilogue').forEach(n=> n.remove());
   const { html, autoConvert } = (prefs || loadPostloguePrefs());
-  let content = html || '';
+  const content = html || '';
   if(!content || !content.trim()) return;
-  const appearsHtml = /<\s*[a-zA-Z!/]/.test(content);
-  if(autoConvert && !appearsHtml){
-    const norm = content.replace(/\r\n?/g, '\n');
-    const paras = norm.split(/\n{2,}/).map(s=> s.trim()).filter(Boolean);
-    content = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
-  }
   const block = document.createElement('div'); block.className = 'chart-epilogue';
-  const wrapper = document.createElement('div'); wrapper.innerHTML = content;
-  Array.from(wrapper.childNodes).forEach(n => block.appendChild(n));
+  const frag = convertTextOrHtmlToNodes(content, !!autoConvert);
+  block.appendChild(frag);
   // Insert epilogue at the very end of render area
   area.appendChild(block);
 }
@@ -1495,21 +1484,74 @@ function applyPrologueToRenderArea(prefs){
     prologue.appendChild(t);
   }
   if(prefaceHtml && prefaceHtml.trim()){
-    // Convert plain text to HTML when auto-convert is on and content appears to be plain text.
-    const appearsHtml = /<\s*[a-zA-Z!/]/.test(prefaceHtml);
-    let htmlOut = prefaceHtml;
-    if(autoConvert && !appearsHtml){
-      // Treat double newlines as paragraph breaks, single newline as <br /> within a paragraph
-      const norm = prefaceHtml.replace(/\r\n?/g, '\n');
-      const paras = norm.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
-      htmlOut = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
-    }
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = htmlOut;
-    Array.from(wrapper.childNodes).forEach(n => prologue.appendChild(n));
+    const frag = convertTextOrHtmlToNodes(prefaceHtml, !!autoConvert);
+    prologue.appendChild(frag);
   }
   // If both are empty, remove the container to avoid extra spacing
   if(!prologue.childNodes.length){ prologue.remove(); }
+}
+
+/* ===== Shared conversion helpers for Prologue/Epilogue ===== */
+function hasAnyHtmlTag(s){ return /<\s*[a-zA-Z!\/?]/.test(s || ''); }
+function hasBlockTag(s){ return /<\s*(p|div|section|article|header|footer|aside|main|nav|h[1-6]|ul|ol|li|table|thead|tbody|tfoot|tr|td|th|blockquote|pre|figure|figcaption)\b/i.test(s || ''); }
+function isBlockElement(el){ if(!el || el.nodeType !== 1) return false; const n = el.nodeName.toLowerCase(); return (
+  n==='p'||n==='div'||n==='section'||n==='article'||n==='header'||n==='footer'||n==='aside'||n==='main'||n==='nav'||/^h[1-6]$/.test(n)||n==='ul'||n==='ol'||n==='li'||n==='table'||n==='thead'||n==='tbody'||n==='tfoot'||n==='tr'||n==='td'||n==='th'||n==='blockquote'||n==='pre'||n==='figure'||n==='figcaption'
+); }
+function cleanupAutoConvertedHtml(container){
+  // Unwrap <p> that directly wrap a single block element
+  Array.from(container.querySelectorAll('p')).forEach(p=>{
+    const kids = Array.from(p.childNodes).filter(n=> n.nodeType===1 || (n.nodeType===3 && n.nodeValue.trim()));
+    if(kids.length===1 && isBlockElement(kids[0])){
+      p.replaceWith(kids[0]);
+    }
+  });
+  // Unwrap <p> that contains only <br> (and whitespace)
+  Array.from(container.querySelectorAll('p')).forEach(p=>{
+    const meaningful = Array.from(p.childNodes).filter(n=> n.nodeType===1 || (n.nodeType===3 && n.nodeValue.trim()));
+    const onlyBrs = meaningful.length>0 && meaningful.every(n => n.nodeType===1 && n.nodeName==='BR');
+    if(onlyBrs){
+      const frag = document.createDocumentFragment();
+      Array.from(p.childNodes).forEach(n=> frag.appendChild(n));
+      p.replaceWith(frag);
+    }
+  });
+  // Remove leading/trailing and duplicate <br>
+  Array.from(container.querySelectorAll('br')).forEach(br=>{
+    const parent = br.parentElement;
+    if(!parent) return;
+    const prev = br.previousSibling; const next = br.nextSibling;
+    const prevIsBr = prev && prev.nodeType===1 && prev.nodeName==='BR';
+    const nextIsBr = next && next.nodeType===1 && next.nodeName==='BR';
+    const isFirst = !prev || (prev.nodeType===3 && !prev.nodeValue.trim());
+    const isLast = !next || (next.nodeType===3 && !next.nodeValue.trim());
+    if(prevIsBr || nextIsBr || isFirst || isLast){ br.remove(); }
+  });
+}
+function convertTextOrHtmlToNodes(input, autoConvert){
+  let html = String(input||'');
+  if(autoConvert){
+    const norm = html.replace(/\r\n?/g, '\n');
+    const parts = norm.split(/\n{2,}/);
+    const out = parts.map(part=>{
+      const hasTag = hasAnyHtmlTag(part);
+      const inner = (hasTag ? part : escapeHtml(part)).replace(/\n/g, '<br />');
+      if(hasBlockTag(part)) return inner;
+      return `<p>${inner}</p>`;
+    }).join('\n');
+    html = out;
+  }
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  cleanupAutoConvertedHtml(wrapper);
+  const frag = document.createDocumentFragment();
+  Array.from(wrapper.childNodes).forEach(n=> frag.appendChild(n));
+  return frag;
+}
+function convertTextOrHtmlToHtml(input, autoConvert){
+  const frag = convertTextOrHtmlToNodes(input, autoConvert);
+  const tmp = document.createElement('div');
+  tmp.appendChild(frag);
+  return tmp.innerHTML;
 }
 
 /* ===== Append external HTML before/after the chart ===== */
@@ -2560,16 +2602,11 @@ function buildStandaloneHTML(){
   // Epilogue content (appears after everything else in export)
   try{
     const postPrefs = loadJSON(TEXTCHART_POSTLOGUE_KEY) || {};
-    let postHtml = postPrefs.html || '';
+    const postHtml = postPrefs.html || '';
     const auto = typeof postPrefs.autoConvert === 'boolean' ? postPrefs.autoConvert : true;
     if(postHtml && postHtml.trim()){
-      const appearsHtml = /<\s*[a-zA-Z!/]/.test(postHtml);
-      if(auto && !appearsHtml){
-        const norm = postHtml.replace(/\r\n?/g, '\n');
-        const paras = norm.split(/\n{2,}/).map(s=>s.trim()).filter(Boolean);
-        postHtml = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
-      }
-      content += `\n<div class="chart-epilogue">${postHtml}</div>`;
+      const converted = convertTextOrHtmlToHtml(postHtml, !!auto);
+      content += `\n<div class="chart-epilogue">${converted}</div>`;
     }
   }catch(_){/* ignore */}
 
