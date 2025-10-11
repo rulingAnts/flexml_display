@@ -15,6 +15,11 @@
     will be applied via an inline CSS custom property named 'notes-col-width' on the table. -->
   <xsl:param name="notesColWidth" select="''"/>
 
+  <!-- Notes handling: 'inline' (default), 'hide', or 'endnotes'.
+    'hide' will hide the last column entirely.
+    'endnotes' replaces the last column cell content with a link to an endnotes section appended after the table. -->
+  <xsl:param name="notesAction" select="'inline'"/>
+
   <!-- ========================
        CSS / style variables
        ======================== -->
@@ -146,6 +151,15 @@
 .chartshell .warn { color: #b91c1c; font-style: italic; font-size: 0.9em; }
 .warn-no-words-glosses {}
 .warn-gloss-count-mismatch {}
+
+/* Notes handling */
+.chartshell.hide-notes tr > .notes-col { display: none; }
+.chart-endnotes { border: 1px solid #eee; padding: 8px 10px; border-radius: 6px; background: linear-gradient(#fff,#fcfcff); margin: 12px 0; }
+.chart-endnotes h3 { margin: 0 0 8px 0; font-size: 1rem; }
+.chart-endnotes .endnote-item { display: grid; grid-template-columns: 80px 1fr; gap: 6px 10px; padding: 6px 0; border-top: 1px solid #f0f0f0; }
+.chart-endnotes .endnote-item:first-of-type { border-top: none; }
+.chart-endnotes .endnote-label { font-weight: 600; }
+.chart-endnotes .endnote-body {}
 ]]>
   </xsl:variable>
 
@@ -206,6 +220,12 @@
               <xsl:if test="$printCompact='true'">
                 <xsl:text> print-compact</xsl:text>
               </xsl:if>
+              <xsl:if test="$notesAction='hide'">
+                <xsl:text> hide-notes</xsl:text>
+              </xsl:if>
+              <xsl:if test="$notesAction='endnotes'">
+                <xsl:text> endnotes-mode</xsl:text>
+              </xsl:if>
             </xsl:attribute>
             <xsl:if test="string-length($notesColWidth) &gt; 0">
               <xsl:attribute name="style">
@@ -218,6 +238,57 @@
             <xsl:apply-templates select="document/chart"/>
           </table>
         </div>
+
+        <!-- Emit endnotes after the table when requested -->
+        <xsl:if test="$notesAction='endnotes'">
+          <div class="chart-endnotes">
+            <h3>Notes</h3>
+            <xsl:for-each select="document/chart/row[not(@type='title1' or @type='title2')]">
+              <xsl:variable name="totalCols" select="sum(/document/chart/row[@type='title1'][1]/cell/@cols) + count(/document/chart/row[@type='title1'][1]/cell[not(@cols)])"/>
+              <!-- Row label: prefer explicit rownum token in first cell, else first cell string, else position() -->
+              <xsl:variable name="rawLabel">
+                <xsl:choose>
+                  <xsl:when test="string-length(normalize-space(cell[1]/main/rownum[1])) &gt; 0">
+                    <xsl:value-of select="normalize-space(cell[1]/main/rownum[1])"/>
+                  </xsl:when>
+                  <xsl:when test="string-length(normalize-space(cell[1])) &gt; 0">
+                    <xsl:value-of select="normalize-space(cell[1])"/>
+                  </xsl:when>
+                  <xsl:otherwise>
+                    <xsl:value-of select="position()"/>
+                  </xsl:otherwise>
+                </xsl:choose>
+              </xsl:variable>
+              <!-- Emit only if last column has content -->
+              <xsl:for-each select="cell">
+                <xsl:variable name="colStart" select="sum(preceding-sibling::cell/@cols) + count(preceding-sibling::cell[not(@cols)]) + 1"/>
+                <xsl:variable name="span">
+                  <xsl:choose>
+                    <xsl:when test="@cols"><xsl:value-of select="@cols"/></xsl:when>
+                    <xsl:otherwise>1</xsl:otherwise>
+                  </xsl:choose>
+                </xsl:variable>
+                <xsl:variable name="colEnd" select="$colStart + number($span) - 1"/>
+                <xsl:if test="number($colEnd) = number($totalCols)">
+                  <xsl:if test="string-length(normalize-space(.)) &gt; 0">
+                    <div class="endnote-item">
+                      <xsl:attribute name="id">endnote-<xsl:value-of select="$rawLabel"/></xsl:attribute>
+                      <div class="endnote-label">
+                        <a>
+                          <xsl:attribute name="href">#row-<xsl:value-of select="$rawLabel"/>-notes</xsl:attribute>
+                          <xsl:value-of select="$rawLabel"/>
+                        </a>
+                      </div>
+                      <div class="endnote-body">
+                        <xsl:apply-templates select="main"/>
+                      </div>
+                    </div>
+                  </xsl:if>
+                </xsl:if>
+              </xsl:for-each>
+            </xsl:for-each>
+          </div>
+        </xsl:if>
       </body>
     </html>
   </xsl:template>
@@ -299,6 +370,7 @@
       </xsl:choose>
     </xsl:variable>
     <xsl:variable name="colEnd" select="$colStart + number($span) - 1"/>
+    <xsl:variable name="totalCols" select="sum(/document/chart/row[@type='title1'][1]/cell/@cols) + count(/document/chart/row[@type='title1'][1]/cell[not(@cols)])"/>
     <!-- Determine if this cell sits at a group boundary based on the first title row -->
     <xsl:variable name="isGroupEnd">
       <xsl:for-each select="/document/chart/row[@type='title1'][1]/cell">
@@ -338,9 +410,34 @@
         <xsl:if test="@reversed='true'"> reversed</xsl:if>
         <xsl:if test="string-length($isGroupStart) &gt; 0"> group-start</xsl:if>
         <xsl:if test="string-length($isGroupEnd) &gt; 0"> group-end</xsl:if>
+        <xsl:if test="number($colEnd) = number($totalCols)"> notes-col</xsl:if>
       </xsl:attribute>
-      <!-- Render interlinear content; no fallback glosses -->
-      <xsl:apply-templates select="main"/>
+      <!-- Render interlinear content; or in endnotes mode, emit a link to the endnote target for last column body cells -->
+      <xsl:choose>
+        <xsl:when test="$notesAction='endnotes' and not($isHeader) and number($colEnd) = number($totalCols) and string-length(normalize-space(.)) &gt; 0">
+          <xsl:variable name="rawLabel">
+            <xsl:choose>
+              <xsl:when test="string-length(normalize-space(parent::row/cell[1]/main/rownum[1])) &gt; 0">
+                <xsl:value-of select="normalize-space(parent::row/cell[1]/main/rownum[1])"/>
+              </xsl:when>
+              <xsl:when test="string-length(normalize-space(parent::row/cell[1])) &gt; 0">
+                <xsl:value-of select="normalize-space(parent::row/cell[1])"/>
+              </xsl:when>
+              <xsl:otherwise>
+                <xsl:value-of select="count(parent::row/preceding-sibling::row[not(@type='title1' or @type='title2')]) + 1"/>
+              </xsl:otherwise>
+            </xsl:choose>
+          </xsl:variable>
+          <a>
+            <xsl:attribute name="href">#endnote-<xsl:value-of select="$rawLabel"/></xsl:attribute>
+            <xsl:attribute name="id">row-<xsl:value-of select="$rawLabel"/>-notes</xsl:attribute>
+            <sup><xsl:value-of select="$rawLabel"/></sup>
+          </a>
+        </xsl:when>
+        <xsl:otherwise>
+          <xsl:apply-templates select="main"/>
+        </xsl:otherwise>
+      </xsl:choose>
 
       <!-- Diagnostics: glosses without words, or mismatched counts -->
       <xsl:variable name="wordCount" select="count(main/word)"/>

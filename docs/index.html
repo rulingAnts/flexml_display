@@ -129,6 +129,11 @@
   .table-view th,.table-view td{padding:8px;border-bottom:1px solid #eee;text-align:left}
   .controls-inline{display:flex;gap:8px;align-items:center;margin-bottom:8px}
   footer{margin-top:28px;padding-top:10px;border-top:1px solid #e6e6e6;color:var(--muted);font-size:0.9rem}
+  /* Endnotes container tweaks */
+  .chart-endnotes{border:1px solid #eee;padding:8px 10px;border-radius:6px;background:linear-gradient(#fff,#fcfcff);margin:12px 0}
+  @media print {
+    .chart-endnotes { break-before: page; page-break-before: always; }
+  }
   /* Print-friendly adjustments */
 @media print {
   /* Page margins */
@@ -388,6 +393,36 @@
   </div>
   <div class="small-muted" style="margin-top:6px">Print: Page breaks are inserted after the Before-Prologue HTML and before the After-Chart HTML.</div>
   </div>
+  </div>
+
+  <!-- Notes column options -->
+  <div id="notesPanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
+    <div class="collapsible-header" id="notesHeader">
+      <span class="small-muted">Notes column options</span>
+      <span class="chev">▸</span>
+    </div>
+    <div class="collapsible-body">
+      <div class="prologue-grid">
+        <label for="notesMode">Behavior</label>
+        <div>
+          <select id="notesMode">
+            <option value="inline">Inline (default)</option>
+            <option value="hide">Hide notes column</option>
+            <option value="endnotes">Convert to endnotes</option>
+          </select>
+        </div>
+
+        <label for="notesWidth">Width</label>
+        <div>
+          <input id="notesWidth" type="text" placeholder="e.g., 24ch, 280px, 20%, 2in, 5cm" />
+          <div class="small-muted" style="margin-top:6px">Leave blank for default. Units supported by CSS are accepted.</div>
+        </div>
+        <div></div>
+        <div style="display:flex;gap:8px">
+          <button id="notesReset" class="small-btn secondary">Reset</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Epilogue (HTML/Text after everything in export) -->
@@ -1661,6 +1696,10 @@ async function renderDocument(xmlDoc){
   showPostloguePanel(true);
   if(!byId('postloguePanel').dataset.wired){ initPostlogueControls(); byId('postloguePanel').dataset.wired = '1'; }
   wireCollapsible('postloguePanel','postlogueHeader');
+  // Notes panel
+  showNotesPanel(true);
+  wireCollapsible('notesPanel','notesHeader');
+  initNotesControls();
     // Scan listRef abbreviations and show Abbrev controls
     globalState.chartAbbrevLabels = collectListRefLabelsFromXml(xmlDoc);
     showAbbrevPanel(true);
@@ -1787,8 +1826,10 @@ async function renderTextChart(xmlDoc){
     }
     // Enable compact print class in-app; exports will remove the class
     proc.setParameter(null, 'printCompact', 'true');
-    // Allow per-chart notes column width override from CSS custom property if present
-    // We can't read computed style before rendering; rely on default or future UI setting.
+    // Notes options from saved prefs
+    const np = loadNotesPrefs();
+    if(np && np.mode) proc.setParameter(null, 'notesAction', np.mode);
+    if(np && typeof np.width === 'string') proc.setParameter(null, 'notesColWidth', np.width);
   }catch(_){/* no-op if params unsupported */}
 
   // Run transform to a fragment, then extract the body contents if present
@@ -2925,6 +2966,34 @@ function enableTextChartColumnResize(root){
     tbl.style.tableLayout = 'fixed';
     tbl.style.width = 'auto';
     tbl.style.maxWidth = '100%';
+}
+
+/* ===== Notes options controls ===== */
+const NOTES_PREFS_KEY = 'flex_textchart_notes_prefs_v1';
+function loadNotesPrefs(){ const d = loadJSON(NOTES_PREFS_KEY) || {}; return { mode: d.mode || 'inline', width: d.width || '' }; }
+function saveNotesPrefs(p){ saveJSON(NOTES_PREFS_KEY, p); }
+function showNotesPanel(show){ const p = byId('notesPanel'); if(p) p.style.display = show ? 'block' : 'none'; }
+function initNotesControls(){
+  const modeSel = byId('notesMode'); const widthIn = byId('notesWidth'); const resetBtn = byId('notesReset');
+  if(!modeSel || !widthIn) return;
+  const prefs = loadNotesPrefs();
+  modeSel.value = prefs.mode || 'inline';
+  widthIn.value = prefs.width || '';
+  const onChange = ()=>{
+    const p = { mode: modeSel.value, width: widthIn.value.trim() };
+    saveNotesPrefs(p);
+    // Re-render the current document if a chart is visible by triggering transform
+    const xmlText = byId('xmlInput').value.trim();
+    if(xmlText){
+      try{
+        const dom = new DOMParser().parseFromString(xmlText, 'application/xml');
+        if(!dom.querySelector('parsererror')) renderDocument(dom);
+      }catch(_){/* ignore */}
+    }
+  };
+  modeSel.addEventListener('change', onChange);
+  widthIn.addEventListener('change', onChange);
+  byId('notesReset')?.addEventListener('click', ()=>{ modeSel.value='inline'; widthIn.value=''; onChange(); });
 }
 </script>
 </body>
