@@ -78,6 +78,15 @@
   .chart-abbrev-block h3{margin:0 0 6px 0;font-size:1rem}
   .chart-abbrev-block ul{margin:0;padding-left:18px}
   .chart-abbrev-block li{margin:3px 0}
+  /* ListRef controls panel */
+  .listref-panel{display:none;margin-top:10px;background:#f4fff4;border:1px solid #cfe9cf;padding:10px 12px;border-radius:8px}
+  .listref-grid{display:grid;grid-template-columns:160px 1fr;gap:8px 10px;align-items:center}
+  .listref-grid .rows{grid-column:1 / -1}
+  .lr-row{display:grid;grid-template-columns:auto auto auto 1fr;gap:8px;margin-bottom:6px;align-items:center}
+  .lr-row .lr-abbr{font-family:monospace;padding:4px 6px;border:1px solid #e5e5e5;border-radius:6px;background:#f7f7f7;white-space:nowrap}
+  .lr-row .lr-abbr.is-hidden{color:#9a9a9a;text-decoration:line-through}
+  .lr-row .lr-chip{background:#eef8ee;border:1px solid #dcefdc;padding:2px 6px;border-radius:999px;font-size:0.85rem}
+  .lr-row button{min-width:28px}
   /* Inserted external HTML blocks */
   .inserted-html-before-prologue, .inserted-html-after-chart{border:1px solid #eee;padding:8px 10px;border-radius:6px;background:#fff; margin:10px 0}
   .table-view{width:100%;border-collapse:collapse}
@@ -323,6 +332,24 @@
   <div class="small-muted" style="margin-top:6px">Print: Page breaks are inserted after the Before-Prologue HTML and before the After-Chart HTML.</div>
   </div>
 
+<!-- ListRef Styling/Ordering -->
+<div id="listRefPanel" class="listref-panel" aria-live="polite" style="display:none">
+  <div class="small-muted" style="margin-bottom:8px;font-weight:600">Text Chart Marker Display and Order Settings</div>
+  <div class="listref-grid">
+    <div class="rows">
+      <div class="small-muted" style="margin:6px 0; display:flex; align-items:center; gap:12px; justify-content:space-between; flex-wrap:wrap">
+        <span>Control how specific listRef abbreviations render in cells. Order here sets left-to-right order within the same cell. Styling and visibility only affect in-cell listRef tokens; the Abbreviations list remains alphabetical.</span>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          <label title="When off, tokens display in the original XML order (no reordering)"><input id="listRefEnforceOrder" type="checkbox" checked> Enforce order</label>
+          <button id="listRefToggleOrder" class="small-btn secondary" title="Toggle ordering direction">(top → bottom)</button>
+          <button id="listRefResetOrder" class="small-btn secondary" title="Reset order to most prevalent pattern from this chart">Reset order</button>
+        </div>
+      </div>
+      <div id="listRefRows"></div>
+    </div>
+  </div>
+</div>
+
 <div id="viewer" class="viewer" aria-live="polite">
   <div id="renderArea" class="small-muted">Paste or upload an XML file, then click Transform.</div>
 </div>
@@ -353,6 +380,7 @@ const WORDFORM_PREFS_KEY = 'flex_xml_viewer_wordform_prefs_v1';
 const TEXTCHART_PROLOGUE_KEY = 'flex_textchart_prologue_v1';
 const PRINT_HEADERS_KEY = 'flex_textchart_repeat_headers_v1';
 const ABBREV_PREFS_KEY = 'flex_textchart_abbrevs_v1';
+const LISTREF_PREFS_KEY = 'flex_textchart_listrefs_v1';
 
 let globalState = {
   phonemeIndex: {},
@@ -361,6 +389,8 @@ let globalState = {
   phonemeRowIds: {},
   showNames: false,
   chartAbbrevLabels: [],
+  listRefLabels: [],
+  listRefPrefs: null,
   abbrevPrefs: null,
   beforeHtml: null,
   beforeHtmlName: '',
@@ -576,6 +606,209 @@ function initPrologueControls(){
 // Ensure controls are initialized on load
 initPrologueControls();
 function showProloguePanel(show){ byId('prologuePanel').style.display = show ? 'block' : 'none'; }
+/* ===== ListRef (hide/style/order) controls ===== */
+function collectListRefLabelsFromRendered(area){
+  const nodes = Array.from(area.querySelectorAll('.interlinear .pair.listRef[data-listref]'));
+  const set = new Set();
+  nodes.forEach(n=>{ const v=(n.getAttribute('data-listref')||'').trim(); if(v && !set.has(v)) set.add(v); });
+  // Preserve first-encounter order; do not alphabetize
+  return Array.from(set);
+}
+// Derive a suggested global order based on most common contiguous listRef patterns in the source XML
+function computeListRefSuggestedOrderFromXml(xmlDoc){
+  try{
+    const runs = [];
+    const mains = Array.from(xmlDoc.querySelectorAll('chart > row > cell > main'));
+    mains.forEach(m => {
+      const kids = Array.from(m.children || []);
+      let i = 0;
+      while(i < kids.length){
+        if(kids[i].nodeName === 'listRef' || kids[i].nodeName === 'listref'){
+          const run = [];
+          let j = i;
+          while(j < kids.length && (kids[j].nodeName === 'listRef' || kids[j].nodeName === 'listref')){
+            const label = (kids[j].textContent || '').trim();
+            if(label) run.push(label);
+            j++;
+          }
+          if(run.length > 1) runs.push(run);
+          i = j;
+        } else {
+          i++;
+        }
+      }
+    });
+  const labelsSet = new Set();
+  const firstSeen = {};
+  runs.forEach(r => r.forEach(l => { if(!labelsSet.has(l)){ firstSeen[l] = Object.keys(firstSeen).length; labelsSet.add(l); } }));
+  const labels = Array.from(labelsSet);
+    if(labels.length === 0) return [];
+    // Pairwise precedence counts
+    const wins = {}; const losses = {};
+    labels.forEach(l => { wins[l] = {}; losses[l] = {}; labels.forEach(o => { wins[l][o] = 0; losses[l][o] = 0; }); });
+    runs.forEach(run => {
+      for(let a=0; a<run.length; a++){
+        for(let b=a+1; b<run.length; b++){
+          const x = run[a], y = run[b];
+          if(x === y) continue;
+          wins[x][y] = (wins[x][y]||0) + 1;
+          losses[y][x] = (losses[y][x]||0) + 1;
+        }
+      }
+    });
+    const score = l => {
+      let w = 0, d = 0;
+      Object.keys(wins[l]||{}).forEach(k => { w += wins[l][k]||0; d += losses[l][k]||0; });
+      return w - d;
+    };
+    const suggested = labels.sort((a,b)=>{
+      const sa = score(a), sb = score(b);
+      if(sb !== sa) return sb - sa; // higher score first (earlier)
+      // Tie-breaker: first-seen order in XML, not alphabetical
+      return (firstSeen[a]||0) - (firstSeen[b]||0);
+    });
+    return suggested;
+  }catch(_){ return []; }
+}
+function loadListRefPrefs(){
+  const d = loadJSON(LISTREF_PREFS_KEY) || {};
+  return { entries: d.entries || {}, order: Array.isArray(d.order) ? d.order : [], enforce: typeof d.enforce === 'boolean' ? d.enforce : true, reverse: !!d.reverse };
+}
+function saveListRefPrefs(p){ saveJSON(LISTREF_PREFS_KEY, p); }
+function reconcileListRefPrefs(prefs, labels, suggestedOrder){
+  const out = { entries: { ...prefs.entries }, order: Array.from(prefs.order||[]), enforce: typeof prefs.enforce === 'boolean' ? prefs.enforce : true, reverse: !!prefs.reverse };
+  // Remove stale entries
+  Object.keys(out.entries).forEach(k=>{ if(!labels.includes(k)) delete out.entries[k]; });
+  // Add new labels with defaults
+  labels.forEach(l=>{ if(!out.entries[l]) out.entries[l] = { hidden:false, bold:false, italic:false, underline:false, fontSize:'' }; });
+  // Determine base order: prefer saved order; else suggested; else alphabetical
+  let base = out.order && out.order.length ? out.order.slice() : (Array.isArray(suggestedOrder) && suggestedOrder.length ? suggestedOrder.slice() : labels.slice());
+  // Compact to labels set and append any missing labels
+  const ordered = base.filter(x => labels.includes(x));
+  labels.forEach(l=>{ if(!ordered.includes(l)) ordered.push(l); });
+  out.order = ordered;
+  return out;
+}
+function showListRefPanel(show){ const p = byId('listRefPanel'); if(p) p.style.display = show ? 'block':'none'; }
+function buildListRefControls(labels, suggestedOrder){
+  const panel = byId('listRefPanel'); if(!panel) return;
+  const rowsHost = byId('listRefRows');
+  const resetBtn = byId('listRefResetOrder');
+  const enforceCb = byId('listRefEnforceOrder');
+  const dirBtn = byId('listRefToggleOrder');
+  let prefs = reconcileListRefPrefs(loadListRefPrefs(), labels, suggestedOrder||[]);
+  globalState.listRefPrefs = prefs; saveListRefPrefs(prefs);
+  if(enforceCb){ enforceCb.checked = !!prefs.enforce; enforceCb.addEventListener('change', ()=>{ prefs.enforce = !!enforceCb.checked; persist(); applyListRefPrefsToArea(); }); }
+  function updateDirButton(){ if(dirBtn) dirBtn.textContent = prefs.reverse ? '(bottom → top)' : '(top → bottom)'; }
+  if(dirBtn){ dirBtn.addEventListener('click', ()=>{ prefs.reverse = !prefs.reverse; persist(); applyListRefPrefsToArea(); updateDirButton(); }); }
+  updateDirButton();
+  function renderRows(){
+    rowsHost.innerHTML='';
+    prefs.order.forEach(label=>{
+      const ent = prefs.entries[label]; if(!ent) return;
+      const row = document.createElement('div'); row.className = 'lr-row';
+      // Up/Down before abbreviation
+      const upBtn = document.createElement('button'); upBtn.className='small-btn secondary'; upBtn.textContent='↑'; upBtn.title='Move earlier';
+      const dnBtn = document.createElement('button'); dnBtn.className='small-btn secondary'; dnBtn.textContent='↓'; dnBtn.title='Move later';
+      upBtn.addEventListener('click', ()=>{ move(label, -1); }); dnBtn.addEventListener('click', ()=>{ move(label, +1); });
+      row.appendChild(upBtn); row.appendChild(dnBtn);
+      // Abbreviation next
+      const abbr = document.createElement('span'); abbr.className = 'lr-abbr'; abbr.textContent = label; row.appendChild(abbr);
+      const styleControls = document.createElement('div');
+      styleControls.style.display='flex'; styleControls.style.alignItems='center'; styleControls.style.gap='8px';
+      // Hide as first style option (eye icon)
+      const hideBtn = document.createElement('button'); hideBtn.className='small-btn'; hideBtn.title='Toggle visibility';
+      function setHideIcon(){ hideBtn.textContent = ent.hidden ? '🙈' : '👁️'; }
+      setHideIcon();
+      hideBtn.addEventListener('click', ()=>{ ent.hidden = !ent.hidden; setHideIcon(); persist(); applyListRefPrefsToArea(); renderHiddenVisual(); });
+      styleControls.appendChild(hideBtn);
+      const b = mkToggle('B', 'Bold', ent.bold, v=>{ ent.bold=v; persist(); applyListRefPrefsToArea(); });
+      const i = mkToggle('I', 'Italic', ent.italic, v=>{ ent.italic=v; persist(); applyListRefPrefsToArea(); });
+      const u = mkToggle('U', 'Underline', ent.underline, v=>{ ent.underline=v; persist(); applyListRefPrefsToArea(); });
+      const sizeIn = document.createElement('input'); sizeIn.type='number'; sizeIn.placeholder='size px'; sizeIn.min='8'; sizeIn.max='48'; sizeIn.step='1';
+      sizeIn.value = ent.fontSize || '';
+      sizeIn.style.width='84px';
+      sizeIn.addEventListener('input', ()=>{ ent.fontSize = sizeIn.value; persist(); applyListRefPrefsToArea(); });
+      styleControls.appendChild(b); styleControls.appendChild(i); styleControls.appendChild(u);
+      const sizeWrap = document.createElement('span'); sizeWrap.className='lr-chip'; sizeWrap.title='Font size (px)'; sizeWrap.appendChild(sizeIn);
+      styleControls.appendChild(sizeWrap);
+      row.appendChild(styleControls);
+      function renderHiddenVisual(){ if(ent.hidden) abbr.classList.add('is-hidden'); else abbr.classList.remove('is-hidden'); }
+      renderHiddenVisual();
+      rowsHost.appendChild(row);
+    });
+  }
+  function mkToggle(txt, title, on, cb){ const b = document.createElement('button'); b.className='small-btn'; b.textContent=txt; b.title=title; b.style.fontWeight= on?'700':'400'; b.style.textDecoration = txt==='U' && on ? 'underline':'none'; b.style.fontStyle = txt==='I' && on ? 'italic':'normal'; b.addEventListener('click', ()=>{ const v = !(txt==='B'? (b.style.fontWeight==='700') : txt==='I' ? (b.style.fontStyle==='italic') : (b.style.textDecoration==='underline')); if(txt==='B') b.style.fontWeight = v?'700':'400'; if(txt==='I') b.style.fontStyle = v?'italic':'normal'; if(txt==='U') b.style.textDecoration = v?'underline':'none'; cb(v); }); return b; }
+  function move(label, delta){ const idx = prefs.order.indexOf(label); const j = idx + delta; if(j<0||j>=prefs.order.length) return; const t=prefs.order[idx]; prefs.order[idx]=prefs.order[j]; prefs.order[j]=t; persist(); renderRows(); applyListRefPrefsToArea(); }
+  function persist(){ globalState.listRefPrefs = prefs; saveListRefPrefs(prefs); }
+  renderRows();
+  // apply immediately
+  applyListRefPrefsToArea();
+  // Wire Reset order: recompute suggestion from current XML and apply
+  if(resetBtn && panel.dataset.resetWired !== '1'){
+    resetBtn.addEventListener('click', ()=>{
+      try{
+        // Recompute suggested from last XML in memory is not stored; call compute on window XML via last transform input
+        // We don't have the last xmlDoc stored globally; instead, re-derive labels suggestion from the same XML we used earlier.
+        // As a practical approach, we will use the last computed suggestedOrder passed in, or recompute from Abbrev XML if available.
+        // Since suggestedOrder is passed into this builder, prefer reusing it.
+        const suggestion = Array.isArray(suggestedOrder) ? suggestedOrder.slice() : [];
+        // Clear saved order and adopt suggestion
+        prefs.order = reconcileListRefPrefs({ entries: prefs.entries, order: [] }, labels, suggestion).order;
+        persist();
+        renderRows();
+        applyListRefPrefsToArea();
+      }catch(_){ /* no-op */ }
+    });
+    panel.dataset.resetWired = '1';
+  }
+}
+function applyListRefPrefsToArea(){
+  const area = byId('renderArea'); if(!area) return;
+  const prefs = globalState.listRefPrefs || loadListRefPrefs();
+  // For each interlinear cell, reorder contiguous runs of listRef pairs based on prefs.order (if enforce enabled)
+  const cells = Array.from(area.querySelectorAll('.interlinear'));
+  cells.forEach(cell=>{
+    // collect siblings and identify listRef pairs
+    const pairs = Array.from(cell.querySelectorAll(':scope > .pair'));
+    // Walk and process runs of listRef pairs
+    let i=0; while(i < pairs.length){
+      if(!pairs[i].classList.contains('listRef')){ i++; continue; }
+      let j=i; const run=[]; while(j<pairs.length && pairs[j].classList.contains('listRef')){ run.push(pairs[j]); j++; }
+      if(prefs.enforce){
+        // Ensure we keep original order metadata for later restoration
+        run.forEach((n, idx)=>{ if(!n.hasAttribute('data-orig-index')) n.setAttribute('data-orig-index', String(idx)); });
+        // sort run by prefs.order using each node's data-listref
+        const orderIndex = (lab)=>{ const k = (lab||'').trim(); const idx = prefs.order.indexOf(k); return idx === -1 ? Number.MAX_SAFE_INTEGER : idx; };
+        run.sort((a,b)=> orderIndex(a.getAttribute('data-listref')) - orderIndex(b.getAttribute('data-listref')));
+        if(prefs.reverse) run.reverse();
+        // reinsert in DOM in this new order
+        const before = pairs[j] || null; // node after run
+        run.forEach(n=> cell.insertBefore(n, before));
+      } else {
+        // Restore to original XML order using data-orig-index (fallback to current order if not present)
+        run.forEach((n, idx)=>{ if(!n.hasAttribute('data-orig-index')) n.setAttribute('data-orig-index', String(idx)); });
+        run.sort((a,b)=> (parseInt(a.getAttribute('data-orig-index')||'0',10) - parseInt(b.getAttribute('data-orig-index')||'0',10)) );
+        if(prefs.reverse) run.reverse();
+        const before = pairs[j] || null;
+        run.forEach(n=> cell.insertBefore(n, before));
+      }
+      i = j; // advance
+    }
+  });
+  // Apply style/visibility per label
+  const nodes = Array.from(area.querySelectorAll('.interlinear .pair.listRef[data-listref]'));
+  nodes.forEach(n=>{
+    const lab = (n.getAttribute('data-listref')||'').trim(); const ent = prefs.entries && prefs.entries[lab];
+    n.style.display = ent && ent.hidden ? 'none' : '';
+    const w = n.querySelector(':scope > .w'); if(w){
+      w.style.fontWeight = (ent && ent.bold) ? '700' : '';
+      w.style.fontStyle = (ent && ent.italic) ? 'italic' : '';
+      w.style.textDecoration = (ent && ent.underline) ? 'underline' : '';
+      w.style.fontSize = (ent && ent.fontSize) ? (parseInt(ent.fontSize,10)||0) + 'px' : '';
+    }
+  });
+}
 /* ===== Abbreviations (listRef) controls and render ===== */
 function collectListRefLabelsFromXml(xmlDoc){
   if(!xmlDoc) return [];
@@ -891,6 +1124,9 @@ async function renderDocument(xmlDoc){
     globalState.chartAbbrevLabels = collectListRefLabelsFromXml(xmlDoc);
     showAbbrevPanel(true);
     buildAbbrevControls(globalState.chartAbbrevLabels);
+    // Prepare ListRef controls (we will collect labels from rendered DOM; compute a suggested order from XML)
+    const suggestedOrder = computeListRefSuggestedOrderFromXml(xmlDoc);
+    showListRefPanel(true);
     if(rendered){
       area.appendChild(rendered);
       // Enable column resizing on the text chart table
@@ -899,6 +1135,9 @@ async function renderDocument(xmlDoc){
       applyAbbrevToRenderArea(globalState.abbrevPrefs || loadAbbrevPrefs());
       // Now insert after-chart HTML in final position
       applyAppendedHtmlToRenderArea();
+      // Collect ListRef labels from rendered DOM (data-listref set by XSL), build controls with suggested order, and apply prefs
+      globalState.listRefLabels = collectListRefLabelsFromRendered(area);
+      buildListRefControls(globalState.listRefLabels, suggestedOrder);
     }
     else { area.textContent = 'Failed to render Text Chart.'; }
     // Show print-headers toggle when a Text Chart is displayed
@@ -956,6 +1195,7 @@ async function renderDocument(xmlDoc){
   const rhc = byId('repeatHeadersContainer');
   if(rhc) rhc.style.display = 'none';
   setPrintHeadersEnabled(false);
+  showListRefPanel(false);
 }
 
 /* ===== Text Chart detection and rendering (XSLT) ===== */

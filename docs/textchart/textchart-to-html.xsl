@@ -350,6 +350,10 @@
               <xsl:if test="$isOpenPunct"> <xsl:text> punct-open</xsl:text></xsl:if>
               <xsl:if test="$isClosePunct"> <xsl:text> punct-close</xsl:text></xsl:if>
             </xsl:attribute>
+            <!-- Preserve raw listRef label (without adhered punctuation) for downstream UI logic -->
+            <xsl:if test="$nm='listRef'">
+              <xsl:attribute name="data-listref"><xsl:value-of select="."/></xsl:attribute>
+            </xsl:if>
             <xsl:choose>
               <xsl:when test="$nm='word'">
                 <xsl:variable name="wi" select="count(preceding-sibling::word)+1"/>
