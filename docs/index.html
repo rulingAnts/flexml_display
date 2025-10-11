@@ -175,11 +175,12 @@
   <p>
     <strong>FLEx XML Viewer</strong> is a client-side web app for viewing and exploring
     <a href="https://software.sil.org/fieldworks/" target="_blank" rel="noopener noreferrer">FieldWorks (FLEx)</a>
-    XML exports in a structured, readable format. It runs locally on your device and does not upload your language data to the internet or share it with a third party. This app is a part of the <a href="https://github.com/rulingAnts/flet" target="_blank" rel="noopener noreferrer">Field Linguistics Extension Tools collection</a>.
+    XML exports in a structured, readable format. This app is a part of the <a href="https://github.com/rulingAnts/flet" target="_blank" rel="noopener noreferrer">Field Linguistics Extension Tools collection</a>.
   </p>
   <p style="margin-top:6px"><strong>Privacy</strong>: All conversions happen locally in your browser — your XML and language data never leave your device. There are no uploads or analytics. Preferences (like language order or view options) are stored only in your browser’s local storage. Using “Open in new window” or “Save as HTML” creates a local snapshot you can choose to save or share.</p>
-  <p>This viewer supports the following FieldWorks export types:</p>
+  <p>This viewer supports the following FieldWorks XML export types:</p>
   <ul style="margin-top:4px">
+    <li><strong>Discourse Charts</strong> — displays FLEx Text Charts (Discourse Charts) as HTML tables with resizable columns, preserving formatting and interlinear structure.</li>
     <li><strong>Lists</strong> — displays hierarchical <code>&lt;list&gt;</code> structures as collapsible nested lists.</li>
     <li><strong>Translated Lists</strong> — handles multilingual <code>&lt;AUni&gt;</code>-based lists with language ordering and visibility controls.</li>
     <li><strong>Phonology</strong> — renders natural classes, phoneme inventories, and cross-references in human-readable tables.</li>
@@ -201,9 +202,14 @@
     <input id="showNames" type="checkbox"> Show element names
   </label>
 
+  <label id="repeatHeadersContainer" style="display:none;align-items:center;gap:8px" class="small-muted" title="When printing a Text Chart, repeat the top two header rows at the top of each page">
+    <input id="repeatHeaders" type="checkbox"> Repeat chart headers on each printed page
+  </label>
+
   <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
     <input id="fileInput" type="file" accept=".xml,.xml.txt" />
-    <button id="openBtn" class="secondary">Open in new window</button>
+    <button id="printBtn" class="secondary">Print / Export to PDF</button>
+    <button id="openBtn" class="secondary" style="display:none">Open in new window</button>
     <button id="saveBtn" class="secondary">Save as HTML</button>
   </div>
 </div>
@@ -271,6 +277,7 @@ function create(tag, attrs={}, text){
 const LANG_PREFS_KEY = 'flex_xml_viewer_lang_prefs_v1';
 const WORDFORM_PREFS_KEY = 'flex_xml_viewer_wordform_prefs_v1';
 const TEXTCHART_PROLOGUE_KEY = 'flex_textchart_prologue_v1';
+const PRINT_HEADERS_KEY = 'flex_textchart_repeat_headers_v1';
 
 let globalState = {
   phonemeIndex: {},
@@ -316,6 +323,19 @@ byId('openBtn').addEventListener('click', ()=>{
   const w = window.open('', '_blank');
   w.document.write(html);
   w.document.close();
+});
+
+// Print / Export to PDF
+byId('printBtn').addEventListener('click', ()=>{
+  // Build a standalone snapshot and print from a new window so content/styles are captured
+  const html = buildStandaloneHTML();
+  const w = window.open('', '_blank');
+  if(!w) return;
+  w.document.write(html);
+  w.document.close();
+  const tryPrint = () => { try { w.focus(); w.print(); } catch(_) {} };
+  if(w.document.readyState === 'complete') setTimeout(tryPrint, 60);
+  else w.addEventListener('load', () => setTimeout(tryPrint, 60));
 });
 
 function sanitizeFilename(name){
@@ -387,6 +407,36 @@ byId('showNames').addEventListener('change', e=>{
     if(prev) prev.textContent = globalState.showNames ? (label + ': ') : '';
   });
 });
+
+/* ===== Print header repetition (Text Chart only) ===== */
+function setPrintHeadersEnabled(enabled){
+  const STYLE_ID = 'textchart-print-headers-style';
+  let el = document.getElementById(STYLE_ID);
+  if(enabled){
+    // With thead emitted by XSL, most browsers repeat header automatically. Add guard CSS for reliability.
+    const css = `@media print {\n  thead { display: table-header-group !important; }\n}`;
+    if(!el){ el = document.createElement('style'); el.id = STYLE_ID; document.head.appendChild(el); }
+    el.textContent = css;
+  } else {
+    if(el) el.remove();
+  }
+}
+function initRepeatHeadersControl(){
+  const box = byId('repeatHeaders');
+  const container = byId('repeatHeadersContainer');
+  if(!box || !container) return;
+  const saved = loadJSON(PRINT_HEADERS_KEY);
+  const enabled = !!(saved && saved.enabled);
+  box.checked = enabled;
+  setPrintHeadersEnabled(enabled);
+  box.addEventListener('change', ()=>{
+    const val = !!box.checked;
+    setPrintHeadersEnabled(val);
+    saveJSON(PRINT_HEADERS_KEY, { enabled: val });
+  });
+}
+// Initialize once
+initRepeatHeadersControl();
 
 /* ===== Prologue (title + preface HTML) controls wiring ===== */
 function loadProloguePrefs(){
@@ -504,6 +554,15 @@ async function renderDocument(xmlDoc){
       enableTextChartColumnResize(area);
     }
     else { area.textContent = 'Failed to render Text Chart.'; }
+    // Show print-headers toggle when a Text Chart is displayed
+  const rhc = byId('repeatHeadersContainer');
+  if(rhc) rhc.style.display = 'flex';
+  // Ensure the checkbox reflects saved preference and style is applied
+  initRepeatHeadersControl();
+  // If thead exists, apply current saved setting right now
+  const saved = loadJSON(PRINT_HEADERS_KEY);
+  const enabled = !!(saved && saved.enabled);
+  setPrintHeadersEnabled(enabled);
     return;
   }
 
@@ -540,6 +599,10 @@ async function renderDocument(xmlDoc){
   // fallback generic
   showProloguePanel(false);
   area.appendChild(renderGenericView(root));
+  // Hide print-headers toggle for non-TextChart views
+  const rhc = byId('repeatHeadersContainer');
+  if(rhc) rhc.style.display = 'none';
+  setPrintHeadersEnabled(false);
 }
 
 /* ===== Text Chart detection and rendering (XSLT) ===== */

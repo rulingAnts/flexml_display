@@ -217,10 +217,13 @@ colgroup[class^="group"]:last-of-type col {
     </xsl:if>
   </xsl:template>
 
-  <!-- chart → tbody -->
+  <!-- chart → thead + tbody (title rows in thead for print-friendly repeating headers) -->
   <xsl:template match="chart">
+    <thead>
+      <xsl:apply-templates select="row[@type='title1' or @type='title2']"/>
+    </thead>
     <tbody>
-      <xsl:apply-templates select="row"/>
+      <xsl:apply-templates select="row[not(@type='title1' or @type='title2')]"/>
     </tbody>
   </xsl:template>
 
@@ -336,42 +339,108 @@ colgroup[class^="group"]:last-of-type col {
         <xsl:variable name="txt" select="string(.)"/>
         <xsl:variable name="isOpenPunct" select="$nm='lit' and ($txt='(' or $txt='[' or $txt='{')"/>
         <xsl:variable name="isClosePunct" select="$nm='lit' and ($txt=')' or $txt=']' or $txt='}')"/>
-        <span>
-          <xsl:attribute name="class">
-            <xsl:text>pair</xsl:text>
-            <xsl:if test="$nm='listRef'"> <xsl:text> listRef</xsl:text></xsl:if>
-            <xsl:if test="$nm='clauseMkr'"> <xsl:text> clauseMkr</xsl:text></xsl:if>
-            <xsl:if test="$nm='rownum'"> <xsl:text> rownum</xsl:text></xsl:if>
-            <xsl:if test="$nm='note'"> <xsl:text> note</xsl:text></xsl:if>
-            <xsl:if test="$isOpenPunct"> <xsl:text> punct-open</xsl:text></xsl:if>
-            <xsl:if test="$isClosePunct"> <xsl:text> punct-close</xsl:text></xsl:if>
-          </xsl:attribute>
-          <xsl:choose>
-            <xsl:when test="$nm='word'">
-              <xsl:variable name="wi" select="count(preceding-sibling::word)+1"/>
-              <span class="w"><xsl:value-of select="."/></span>
-              <span class="g"><xsl:value-of select="../following-sibling::glosses[1]/gloss[$wi] | ../glosses/gloss[$wi]"/></span>
-            </xsl:when>
-            <xsl:when test="$nm='lit'">
-              <span class="w"><xsl:value-of select="."/></span><span class="g"/>
-            </xsl:when>
-            <xsl:when test="$nm='listRef'">
-              <span class="w listRef"><xsl:value-of select="."/></span><span class="g"/>
-            </xsl:when>
-            <xsl:when test="$nm='clauseMkr'">
-              <span class="w clauseMkr"><xsl:value-of select="."/></span><span class="g"/>
-            </xsl:when>
-            <xsl:when test="$nm='rownum'">
-              <span class="w rownum"><xsl:value-of select="."/></span><span class="g"/>
-            </xsl:when>
-            <xsl:when test="$nm='note'">
-              <span class="w note"><xsl:value-of select="."/></span><span class="g"/>
-            </xsl:when>
-            <xsl:otherwise>
-              <span class="w"><xsl:value-of select="."/></span><span class="g"/>
-            </xsl:otherwise>
-          </xsl:choose>
-        </span>
+        <!-- Skip rendering lit that must attach to neighbors; it will be included by them -->
+        <xsl:if test="not($nm='lit' and (@noSpaceAfter='true' or @noSpaceBefore='true'))">
+          <span>
+            <xsl:attribute name="class">
+              <xsl:text>pair</xsl:text>
+              <xsl:if test="$nm='listRef'"> <xsl:text> listRef</xsl:text></xsl:if>
+              <xsl:if test="$nm='clauseMkr'"> <xsl:text> clauseMkr</xsl:text></xsl:if>
+              <xsl:if test="$nm='rownum'"> <xsl:text> rownum</xsl:text></xsl:if>
+              <xsl:if test="$nm='note'"> <xsl:text> note</xsl:text></xsl:if>
+              <xsl:if test="$isOpenPunct"> <xsl:text> punct-open</xsl:text></xsl:if>
+              <xsl:if test="$isClosePunct"> <xsl:text> punct-close</xsl:text></xsl:if>
+            </xsl:attribute>
+            <xsl:choose>
+              <xsl:when test="$nm='word'">
+                <xsl:variable name="wi" select="count(preceding-sibling::word)+1"/>
+                <span class="w">
+                  <xsl:if test="preceding-sibling::*[1][self::lit and @noSpaceAfter='true']">
+                    <xsl:value-of select="preceding-sibling::*[1]"/>
+                  </xsl:if>
+                  <xsl:value-of select="."/>
+                  <xsl:if test="following-sibling::*[1][self::lit and @noSpaceBefore='true']">
+                    <xsl:value-of select="following-sibling::*[1]"/>
+                  </xsl:if>
+                </span>
+                <span class="g"><xsl:value-of select="../following-sibling::glosses[1]/gloss[$wi] | ../glosses/gloss[$wi]"/></span>
+              </xsl:when>
+              <xsl:when test="$nm='lit'">
+                <!-- Standalone lit (no noSpaceBefore/After) -->
+                <span class="w">
+                  <xsl:if test="preceding-sibling::*[1][self::lit and @noSpaceAfter='true']">
+                    <xsl:value-of select="preceding-sibling::*[1]"/>
+                  </xsl:if>
+                  <xsl:value-of select="."/>
+                  <xsl:if test="following-sibling::*[1][self::lit and @noSpaceBefore='true']">
+                    <xsl:value-of select="following-sibling::*[1]"/>
+                  </xsl:if>
+                </span>
+                <span class="g"/>
+              </xsl:when>
+              <xsl:when test="$nm='listRef'">
+                <span class="w listRef">
+                  <xsl:if test="preceding-sibling::*[1][self::lit and @noSpaceAfter='true']">
+                    <xsl:value-of select="preceding-sibling::*[1]"/>
+                  </xsl:if>
+                  <xsl:value-of select="."/>
+                  <xsl:if test="following-sibling::*[1][self::lit and @noSpaceBefore='true']">
+                    <xsl:value-of select="following-sibling::*[1]"/>
+                  </xsl:if>
+                </span>
+                <span class="g"/>
+              </xsl:when>
+              <xsl:when test="$nm='clauseMkr'">
+                <span class="w clauseMkr">
+                  <xsl:if test="preceding-sibling::*[1][self::lit and @noSpaceAfter='true']">
+                    <xsl:value-of select="preceding-sibling::*[1]"/>
+                  </xsl:if>
+                  <xsl:value-of select="."/>
+                  <xsl:if test="following-sibling::*[1][self::lit and @noSpaceBefore='true']">
+                    <xsl:value-of select="following-sibling::*[1]"/>
+                  </xsl:if>
+                </span>
+                <span class="g"/>
+              </xsl:when>
+              <xsl:when test="$nm='rownum'">
+                <span class="w rownum">
+                  <xsl:if test="preceding-sibling::*[1][self::lit and @noSpaceAfter='true']">
+                    <xsl:value-of select="preceding-sibling::*[1]"/>
+                  </xsl:if>
+                  <xsl:value-of select="."/>
+                  <xsl:if test="following-sibling::*[1][self::lit and @noSpaceBefore='true']">
+                    <xsl:value-of select="following-sibling::*[1]"/>
+                  </xsl:if>
+                </span>
+                <span class="g"/>
+              </xsl:when>
+              <xsl:when test="$nm='note'">
+                <span class="w note">
+                  <xsl:if test="preceding-sibling::*[1][self::lit and @noSpaceAfter='true']">
+                    <xsl:value-of select="preceding-sibling::*[1]"/>
+                  </xsl:if>
+                  <xsl:value-of select="."/>
+                  <xsl:if test="following-sibling::*[1][self::lit and @noSpaceBefore='true']">
+                    <xsl:value-of select="following-sibling::*[1]"/>
+                  </xsl:if>
+                </span>
+                <span class="g"/>
+              </xsl:when>
+              <xsl:otherwise>
+                <span class="w">
+                  <xsl:if test="preceding-sibling::*[1][self::lit and @noSpaceAfter='true']">
+                    <xsl:value-of select="preceding-sibling::*[1]"/>
+                  </xsl:if>
+                  <xsl:value-of select="."/>
+                  <xsl:if test="following-sibling::*[1][self::lit and @noSpaceBefore='true']">
+                    <xsl:value-of select="following-sibling::*[1]"/>
+                  </xsl:if>
+                </span>
+                <span class="g"/>
+              </xsl:otherwise>
+            </xsl:choose>
+          </span>
+        </xsl:if>
       </xsl:for-each>
     </div>
   </xsl:template>
