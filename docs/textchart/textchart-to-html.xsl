@@ -44,25 +44,25 @@
 }
 
 /* colgroup-based thick borders */
-colgroup[class^="group"] col {
+.chartshell colgroup[class^="group"] col {
   border-left: none;
   border-right: none;
 }
-colgroup.group1 col:first-child {
+.chartshell colgroup.group1 col:first-child {
   border-left: var(--header-border-thick);
 }
-colgroup[class^="group"]:last-of-type col:last-child {
+.chartshell colgroup[class^="group"]:last-of-type col:last-child {
   border-right: var(--header-border-thick);
 }
-colgroup.group1 col,
-colgroup.group2 col,
-colgroup.group3 col,
-colgroup.group4 col,
-colgroup.group5 col {
+.chartshell colgroup.group1 col,
+.chartshell colgroup.group2 col,
+.chartshell colgroup.group3 col,
+.chartshell colgroup.group4 col,
+.chartshell colgroup.group5 col {
   border-right: var(--header-border-thick);
 }
 /* Constrain the width of the final group (typically Notes column) */
-colgroup[class^="group"]:last-of-type col {
+.chartshell colgroup[class^="group"]:last-of-type col {
   /* A sane width for notes; adjust as needed */
   width: var(--notes-col-width);
 }
@@ -81,13 +81,13 @@ colgroup[class^="group"]:last-of-type col {
 }
 
 /* Title rows */
-.row.title1 th { background: #f6f6f6; border-top: var(--header-border-thick); border-bottom: var(--header-border-thick); }
-.row.title2 th { background: #fbfbfb; border-right: var(--header-border-thick); }
+.chartshell .row.title1 th { background: #f6f6f6; border-top: var(--header-border-thick); border-bottom: var(--header-border-thick); }
+.chartshell .row.title2 th { background: #fbfbfb; border-right: var(--header-border-thick); }
 
 /* Row type colors */
-.row.dependent { color: var(--dependent-color); }
-.row.speech { color: var(--speech-color); }
-.row.song { color: var(--song-color); }
+.chartshell .row.dependent { color: var(--dependent-color); }
+.chartshell .row.speech { color: var(--speech-color); }
+.chartshell .row.song { color: var(--song-color); }
 
 /* Sentence/paragraph boundaries */
 /* Apply to cells so borders render with separate border model */
@@ -95,29 +95,28 @@ colgroup[class^="group"]:last-of-type col {
 .chartshell tr.endPara > th, .chartshell tr.endPara > td { border-bottom: var(--para-end-border); }
 
 /* reversed cell alignment */
-.cell.reversed { text-align: right; }
+.chartshell .cell.reversed { text-align: right; }
 
-/* interlinear layout (wrap by word/gloss pair, not within words) */
-.interlinear {
+.chartshell .interlinear {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: flex-start;
 }
-.interlinear .pair { display: inline-flex; flex-direction: column; align-items: flex-start; min-width: 0; }
-.interlinear .pair { margin-left: var(--interlinear-gap); }
-.interlinear .pair:first-child { margin-left: 0; }
+.chartshell .interlinear .pair { display: inline-flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.chartshell .interlinear .pair { margin-left: var(--interlinear-gap); }
+.chartshell .interlinear .pair:first-child { margin-left: 0; }
 /* Keep parentheses/brackets tight with adjacent tokens */
-.interlinear .pair.punct-open + .pair { margin-left: 0; }
-.interlinear .pair.punct-close { margin-left: 0; }
-.interlinear .w { white-space: nowrap; }
-.interlinear .pair.note .w { white-space: normal; }
-.interlinear .g { white-space: nowrap; font-size: 0.9em; color: var(--gloss-color); }
+.chartshell .interlinear .pair.punct-open + .pair { margin-left: 0; }
+.chartshell .interlinear .pair.punct-close { margin-left: 0; }
+.chartshell .interlinear .w { white-space: nowrap; }
+.chartshell .interlinear .pair.note .w { white-space: normal; }
+.chartshell .interlinear .g { white-space: nowrap; font-size: 0.9em; color: var(--gloss-color); }
 
 /* small token classes */
-.listRef { color: var(--listref-color); font-weight: 600; }
-.clauseMkr { color: var(--clausemkr-color); font-weight: 600; }
-.rownum { color: var(--rownum-color); font-weight: 600; margin-right: 0.25em; }
-.note { color: var(--note-color); font-style: italic; }
+.chartshell .listRef { color: var(--listref-color); font-weight: 600; }
+.chartshell .clauseMkr { color: var(--clausemkr-color); font-weight: 600; }
+.chartshell .rownum { color: var(--rownum-color); font-weight: 600; margin-right: 0.25em; }
+.chartshell .note { color: var(--note-color); font-style: italic; }
 
 /* ================= Group vertical borders (per-cell) ================= */
 /* Draw thick right borders at the end of each header-defined group */
@@ -134,7 +133,7 @@ colgroup[class^="group"]:last-of-type col {
 }
 
 /* Debug warnings */
-.warn { color: #b91c1c; font-style: italic; font-size: 0.9em; }
+.chartshell .warn { color: #b91c1c; font-style: italic; font-size: 0.9em; }
 .warn-no-words-glosses {}
 .warn-gloss-count-mismatch {}
 ]]>

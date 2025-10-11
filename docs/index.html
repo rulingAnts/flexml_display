@@ -78,6 +78,8 @@
   .chart-abbrev-block h3{margin:0 0 6px 0;font-size:1rem}
   .chart-abbrev-block ul{margin:0;padding-left:18px}
   .chart-abbrev-block li{margin:3px 0}
+  /* Inserted external HTML blocks */
+  .inserted-html-before-prologue, .inserted-html-after-chart{border:1px solid #eee;padding:8px 10px;border-radius:6px;background:#fff; margin:10px 0}
   .table-view{width:100%;border-collapse:collapse}
   .table-view th,.table-view td{padding:8px;border-bottom:1px solid #eee;text-align:left}
   .controls-inline{display:flex;gap:8px;align-items:center;margin-bottom:8px}
@@ -124,7 +126,7 @@
     background: transparent !important;
   }
 
-  /* Table layout for print */
+  /* Table layout for print (chart only) */
   .chartshell {
     width: 100% !important;       /* fit page width */
     border-collapse: collapse !important;
@@ -137,7 +139,7 @@
     background: transparent !important;
   }
 
-  /* Solid borders for cells and group rails */
+  /* Solid borders for cells and group rails (chart only) */
   .chartshell th, .chartshell td {
     border: 1px solid #000 !important;
     padding: 6px 6px !important; /* a bit tighter for paper */
@@ -163,7 +165,7 @@
   }
 
   /* Interlinear: keep gloss readable in grayscale */
-  .interlinear .g {
+  .chartshell .interlinear .g {
     color: #333 !important;
   }
 
@@ -176,6 +178,9 @@
   .col-resizer { display: none !important; }
   /* Keep abbreviations list together if possible */
   .chart-abbrev-block { break-inside: avoid; page-break-inside: avoid; }
+  /* Page breaks for inserted blocks */
+  .inserted-html-before-prologue { break-after: page; page-break-after: always; }
+  .inserted-html-after-chart { break-before: page; page-break-before: always; }
 }
 </style>
 </head>
@@ -267,7 +272,7 @@
 
 <!-- Abbreviations list (labels + optional definitions) -->
 <div id="abbrevPanel" class="abbrev-panel" aria-live="polite">
-  <div class="small-muted" style="margin-bottom:8px;font-weight:600">Abbreviations (from listRef tokens)</div>
+  <div class="small-muted" style="margin-bottom:8px;font-weight:600">Abbreviations</div>
   <div class="abbrev-grid">
     <label for="abbrevInclude">Include list</label>
     <label style="display:flex;align-items:center;gap:8px">
@@ -294,6 +299,29 @@
     </div>
   </div>
 </div>
+
+<!-- Additional HTML (before Prologue and after Text Chart) -->
+<div id="appendHtmlPanel" class="prologue-panel" aria-live="polite" style="display:none">
+  <div class="small-muted" style="margin-bottom:8px;font-weight:600">Additional HTML (optional) - <i>Especially useful for including your interlinear text with free translations, using FLEx Interlinear Text Export (HTML format)</i></div>
+  <div class="prologue-grid">
+    <label for="beforeHtmlInput">Before Prologue</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="beforeHtmlInput" type="file" accept=".html,.htm,text/html" />
+      <button id="clearBeforeHtmlBtn" class="small-btn secondary">Clear</button>
+      <span id="beforeHtmlStatus" class="small-muted"></span>
+    </div>
+    <label for="afterHtmlInput">After Text Chart</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="afterHtmlInput" type="file" accept=".html,.htm,text/html" />
+      <button id="clearAfterHtmlBtn" class="small-btn secondary">Clear</button>
+      <span id="afterHtmlStatus" class="small-muted"></span>
+    </div>
+    <div class="full small-muted" style="margin-top:6px">
+      Tip: The “After Text Chart” HTML will appear before Abbreviations when Abbreviations are placed at the end.
+    </div>
+  </div>
+  <div class="small-muted" style="margin-top:6px">Print: Page breaks are inserted after the Before-Prologue HTML and before the After-Chart HTML.</div>
+  </div>
 
 <div id="viewer" class="viewer" aria-live="polite">
   <div id="renderArea" class="small-muted">Paste or upload an XML file, then click Transform.</div>
@@ -333,7 +361,11 @@ let globalState = {
   phonemeRowIds: {},
   showNames: false,
   chartAbbrevLabels: [],
-  abbrevPrefs: null
+  abbrevPrefs: null,
+  beforeHtml: null,
+  beforeHtmlName: '',
+  afterHtml: null,
+  afterHtmlName: ''
 };
 
 function saveJSON(key, obj){ try{ localStorage.setItem(key, JSON.stringify(obj)); } catch(e){} }
@@ -727,7 +759,15 @@ function applyPrologueToRenderArea(prefs){
   if(!prologue){
     prologue = document.createElement('div');
     prologue.className = 'chart-prologue';
-    area.insertBefore(prologue, area.firstChild || null);
+    // Insert after any before-prologue HTML if present
+    const beforeBlock = area.querySelector(':scope > .inserted-html-before-prologue');
+    if(beforeBlock && beforeBlock.nextSibling){
+      area.insertBefore(prologue, beforeBlock.nextSibling);
+    } else if(beforeBlock){
+      area.appendChild(prologue);
+    } else {
+      area.insertBefore(prologue, area.firstChild || null);
+    }
   }
   prologue.innerHTML = '';
   const { tag, titleText } = (prefs || loadProloguePrefs());
@@ -755,6 +795,76 @@ function applyPrologueToRenderArea(prefs){
   if(!prologue.childNodes.length){ prologue.remove(); }
 }
 
+/* ===== Append external HTML before/after the chart ===== */
+function showAppendHtmlPanel(show){ const p = byId('appendHtmlPanel'); if(p) p.style.display = show ? 'block' : 'none'; }
+function sanitizeUserHtml(html){
+  // strip <script> tags for safety
+  try{
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html || '';
+    tmp.querySelectorAll('script').forEach(s=> s.remove());
+    return tmp.innerHTML;
+  }catch(_){ return html || ''; }
+}
+function applyAppendedHtmlToRenderArea(){
+  const area = byId('renderArea'); if(!area) return;
+  // Before-prologue block
+  let before = area.querySelector(':scope > .inserted-html-before-prologue');
+  if(globalState.beforeHtml){
+    if(!before){ before = document.createElement('div'); before.className = 'inserted-html-before-prologue'; area.insertBefore(before, area.firstChild || null); }
+    before.innerHTML = globalState.beforeHtml;
+  } else if(before){ before.remove(); }
+
+  // After-chart block: place after table, but before abbreviations if they are at bottom
+  let after = area.querySelector(':scope > .inserted-html-after-chart');
+  if(globalState.afterHtml){
+    if(!after){ after = document.createElement('div'); after.className = 'inserted-html-after-chart'; }
+    after.innerHTML = globalState.afterHtml;
+    const tableWrap = area.querySelector('table.chartshell')?.closest('.chartshell-wrapper') || area.querySelector('table.chartshell');
+    const abbrBlock = area.querySelector(':scope > .chart-abbrev-block');
+    const abbrBottom = (globalState.abbrevPrefs && globalState.abbrevPrefs.include && globalState.abbrevPrefs.position === 'bottom');
+    if(abbrBottom && abbrBlock){
+      area.insertBefore(after, abbrBlock);
+    } else if(tableWrap){
+      if(tableWrap.nextSibling){ area.insertBefore(after, tableWrap.nextSibling); }
+      else { area.appendChild(after); }
+    } else {
+      // fallback to end
+      area.appendChild(after);
+    }
+  } else if(after){ after.remove(); }
+
+  // Update small statuses
+  const bstat = byId('beforeHtmlStatus'); if(bstat) bstat.textContent = globalState.beforeHtmlName ? `Attached: ${globalState.beforeHtmlName}` : '';
+  const astat = byId('afterHtmlStatus'); if(astat) astat.textContent = globalState.afterHtmlName ? `Attached: ${globalState.afterHtmlName}` : '';
+}
+function initAppendHtmlControls(){
+  const beforeIn = byId('beforeHtmlInput');
+  const afterIn = byId('afterHtmlInput');
+  const clearB = byId('clearBeforeHtmlBtn');
+  const clearA = byId('clearAfterHtmlBtn');
+  if(!beforeIn || !afterIn) return;
+  const readFile = async (file)=>{ if(!file) return null; const txt = await file.text(); return sanitizeUserHtml(txt); };
+  beforeIn.addEventListener('change', async e=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f){ globalState.beforeHtml = null; globalState.beforeHtmlName=''; applyAppendedHtmlToRenderArea(); return; }
+    globalState.beforeHtml = await readFile(f); globalState.beforeHtmlName = f.name || '';
+    applyAppendedHtmlToRenderArea();
+    // Re-insert prologue after the before block if needed
+    applyPrologueToRenderArea(loadProloguePrefs());
+    // Abbrev may need to shift down
+    applyAbbrevToRenderArea(globalState.abbrevPrefs || loadAbbrevPrefs());
+  });
+  afterIn.addEventListener('change', async e=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f){ globalState.afterHtml = null; globalState.afterHtmlName=''; applyAppendedHtmlToRenderArea(); return; }
+    globalState.afterHtml = await readFile(f); globalState.afterHtmlName = f.name || '';
+    applyAppendedHtmlToRenderArea();
+  });
+  clearB.addEventListener('click', ()=>{ globalState.beforeHtml=null; globalState.beforeHtmlName=''; beforeIn.value=''; applyAppendedHtmlToRenderArea(); applyPrologueToRenderArea(loadProloguePrefs()); applyAbbrevToRenderArea(globalState.abbrevPrefs || loadAbbrevPrefs()); });
+  clearA.addEventListener('click', ()=>{ globalState.afterHtml=null; globalState.afterHtmlName=''; afterIn.value=''; applyAppendedHtmlToRenderArea(); });
+}
+
 /* ===== Main detection & dispatch ===== */
 async function renderDocument(xmlDoc){
   // reset state
@@ -769,6 +879,11 @@ async function renderDocument(xmlDoc){
   if(isTextChartDocument(xmlDoc)){
     const rendered = await renderTextChart(xmlDoc);
     area.innerHTML = '';
+    showAppendHtmlPanel(true);
+    // Initialize Append HTML controls once
+    if(!byId('appendHtmlPanel').dataset.wired){ initAppendHtmlControls(); byId('appendHtmlPanel').dataset.wired = '1'; }
+    // Apply any previously selected before-html prior to placing prologue
+    applyAppendedHtmlToRenderArea();
     // Show prologue controls and inject current prologue before the chart
     showProloguePanel(true);
     applyPrologueToRenderArea(loadProloguePrefs());
@@ -782,6 +897,8 @@ async function renderDocument(xmlDoc){
       enableTextChartColumnResize(area);
       // Ensure abbreviations block is positioned correctly relative to chart
       applyAbbrevToRenderArea(globalState.abbrevPrefs || loadAbbrevPrefs());
+      // Now insert after-chart HTML in final position
+      applyAppendedHtmlToRenderArea();
     }
     else { area.textContent = 'Failed to render Text Chart.'; }
     // Show print-headers toggle when a Text Chart is displayed
@@ -833,6 +950,7 @@ async function renderDocument(xmlDoc){
   // fallback generic
   showProloguePanel(false);
   showAbbrevPanel(false);
+  showAppendHtmlPanel(false);
   area.appendChild(renderGenericView(root));
   // Hide print-headers toggle for non-TextChart views
   const rhc = byId('repeatHeadersContainer');
