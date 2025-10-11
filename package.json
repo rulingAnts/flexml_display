@@ -11,14 +11,14 @@
     "dist:win": "electron-builder --win nsis",
     "dist:win:portable": "electron-builder --win portable",
     "dist:win:all": "electron-builder --win nsis portable"
- },
+  },
   "author": "",
   "engines": {
-    "node": "22.20.0"
+    "node": ">=18 <25"
   },
   "license": "AGPL-3.0-only",
   "devDependencies": {
-    "electron": "^38.2.1",
+    "electron": "^38.2.2",
     "electron-builder": "^24.0.0"
   },
   "build": {
