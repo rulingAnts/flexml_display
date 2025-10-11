@@ -33,6 +33,29 @@
   .col-resizer.dragging:after{background:rgba(11,110,219,0.35)}
   /* Make content wrap when columns shrink (resizable mode switches table-layout to fixed) */
   .chartshell th, .chartshell td{overflow-wrap:anywhere; word-break:normal; min-width:0}
+  /* Sticky (freeze) header rows for Text Chart */
+  .chartshell.freeze-headers{ border-collapse: separate; border-spacing: 0; }
+  /* Prefer row-level sticky for Firefox */
+  .chartshell.freeze-headers thead tr.row.title1,
+  .chartshell.freeze-headers thead tr.row.title2{
+    position: sticky;
+  }
+  .chartshell.freeze-headers thead tr.row.title1 th,
+  .chartshell.freeze-headers thead tr.row.title2 th{
+    position: sticky;
+    z-index: 3;
+    background: #fff;
+  }
+  .chartshell.freeze-headers thead tr.row.title1{ top: var(--tc-sticky-top-1, 0px); }
+  .chartshell.freeze-headers thead tr.row.title2{ top: var(--tc-sticky-top-2, 32px); }
+  .chartshell.freeze-headers thead tr.row.title1 th{ top: var(--tc-sticky-top-1, 0px); }
+  .chartshell.freeze-headers thead tr.row.title2 th{ top: var(--tc-sticky-top-2, 32px); }
+  /* Ensure borders render above body cells */
+  .chartshell.freeze-headers thead tr.row.title1{ z-index: 5; }
+  .chartshell.freeze-headers thead tr.row.title2{ z-index: 6; }
+  .chartshell.freeze-headers thead tr.row.title2 th{ z-index: 7; }
+  .chartshell-wrapper{ position: relative; }
+  .chartshell-sticky-spacer{ height: var(--tc-sticky-spacer, 0px); }
   /* Interlinear pair layout is defined by XSL-injected <style>; avoid overriding here. */
   .controls-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
   .prologue-panel{display:none;margin-top:10px;background:#f7fbff;border:1px solid #d9ebff;padding:10px 12px;border-radius:8px}
@@ -234,7 +257,7 @@
   </p>
 </section>
 
-<textarea id="xmlInput" placeholder="Paste XML here or choose a file..."></textarea>
+<textarea id="xmlInput" placeholder="Paste XML here or choose a file..." hidden></textarea>
 
 <div class="controls-row">
   <button id="transformBtn">Transform</button>
@@ -248,7 +271,11 @@
     <input id="repeatHeaders" type="checkbox"> Repeat chart headers on each printed page
   </label>
 
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+  <label id="freezeHeadersContainer" style="display:none;align-items:center;gap:8px" class="small-muted" title="Keep the two chart header rows visible while scrolling">
+    <input id="freezeHeaders" type="checkbox"> Freeze chart headers when scrolling
+  </label>
+
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:left">
     <input id="fileInput" type="file" accept=".xml,.xml.txt" />
     <button id="printBtn" class="secondary">Print / Export to PDF</button>
     <button id="openBtn" class="secondary" style="display:none">Open in new window</button>
@@ -430,6 +457,7 @@ const LANG_PREFS_KEY = 'flex_xml_viewer_lang_prefs_v1';
 const WORDFORM_PREFS_KEY = 'flex_xml_viewer_wordform_prefs_v1';
 const TEXTCHART_PROLOGUE_KEY = 'flex_textchart_prologue_v1';
 const PRINT_HEADERS_KEY = 'flex_textchart_repeat_headers_v1';
+const FREEZE_HEADERS_KEY = 'flex_textchart_freeze_headers_v1';
 const ABBREV_PREFS_KEY = 'flex_textchart_abbrevs_v1';
 const LISTREF_PREFS_KEY = 'flex_textchart_listrefs_v2';
 
@@ -599,6 +627,62 @@ function initRepeatHeadersControl(){
 }
 // Initialize once
 initRepeatHeadersControl();
+
+/* ===== Freeze headers (sticky title rows) ===== */
+function setFreezeHeadersEnabled(enabled){
+  const area = byId('renderArea');
+  const tbl = area?.querySelector('table.chartshell');
+  if(!tbl) return;
+  const wrapper = tbl.closest('.chartshell-wrapper') || tbl.parentElement;
+  if(enabled){
+    tbl.classList.add('freeze-headers');
+    // Ensure we have a spacer element right before the table to offset layout when headers stick
+    let spacer = wrapper?.querySelector(':scope > .chartshell-sticky-spacer');
+    if(!spacer){
+      spacer = document.createElement('div');
+      spacer.className = 'chartshell-sticky-spacer';
+      if(wrapper) wrapper.insertBefore(spacer, tbl);
+      else tbl.parentElement?.insertBefore(spacer, tbl);
+    }
+    computeStickyOffsets();
+  } else {
+    tbl.classList.remove('freeze-headers');
+    const spacer = wrapper?.querySelector(':scope > .chartshell-sticky-spacer');
+    if(spacer) spacer.remove();
+    document.documentElement.style.removeProperty('--tc-sticky-top-1');
+    document.documentElement.style.removeProperty('--tc-sticky-top-2');
+    document.documentElement.style.removeProperty('--tc-sticky-spacer');
+  }
+}
+function computeStickyOffsets(){
+  const area = byId('renderArea');
+  const tbl = area?.querySelector('table.chartshell');
+  if(!tbl) return;
+  const head = tbl.querySelector('thead');
+  const r1 = head?.querySelector('tr.row.title1');
+  const r2 = head?.querySelector('tr.row.title2');
+  const rect1 = r1?.getBoundingClientRect();
+  const rect2 = r2?.getBoundingClientRect();
+  // Account for any fixed UI at the top (none by default). We can also consider header height.
+  const topBase = 0;
+  const h1 = rect1 ? Math.ceil(rect1.height) : 0;
+  const h2 = rect2 ? Math.ceil(rect2.height) : 0;
+  document.documentElement.style.setProperty('--tc-sticky-top-1', topBase + 'px');
+  document.documentElement.style.setProperty('--tc-sticky-top-2', (topBase + h1) + 'px');
+  document.documentElement.style.setProperty('--tc-sticky-spacer', (h1 + h2) + 'px');
+}
+function initFreezeHeadersControl(){
+  const box = byId('freezeHeaders');
+  const container = byId('freezeHeadersContainer');
+  if(!box || !container) return;
+  const saved = loadJSON(FREEZE_HEADERS_KEY);
+  const enabled = !!(saved && saved.enabled);
+  box.checked = enabled;
+  // Only apply after a chart is rendered; this function may run before the table exists
+  box.addEventListener('change', ()=>{
+    const val = !!box.checked; saveJSON(FREEZE_HEADERS_KEY, { enabled: val }); setFreezeHeadersEnabled(val);
+  });
+}
 
 /* ===== Collapsible panels (Text Chart settings) ===== */
 const COLLAPSE_STATE_KEY = 'flex_textchart_collapse_state_v1';
@@ -1455,6 +1539,10 @@ async function renderDocument(xmlDoc){
       area.appendChild(rendered);
       // Enable column resizing on the text chart table
       enableTextChartColumnResize(area);
+      // Apply freeze headers if saved and show control
+      const fhc = byId('freezeHeadersContainer'); if(fhc) fhc.style.display = 'flex';
+      initFreezeHeadersControl();
+      const savedFreeze = loadJSON(FREEZE_HEADERS_KEY); setTimeout(()=> setFreezeHeadersEnabled(!!(savedFreeze && savedFreeze.enabled)), 0);
       // Ensure abbreviations block is positioned correctly relative to chart
       applyAbbrevToRenderArea(globalState.abbrevPrefs || loadAbbrevPrefs());
       // Now insert after-chart HTML in final position
@@ -1519,6 +1607,8 @@ async function renderDocument(xmlDoc){
   // Hide print-headers toggle for non-TextChart views
   const rhc = byId('repeatHeadersContainer');
   if(rhc) rhc.style.display = 'none';
+  const fhc2 = byId('freezeHeadersContainer');
+  if(fhc2) fhc2.style.display = 'none';
   setPrintHeadersEnabled(false);
   showListRefPanel(false);
 }
@@ -2412,17 +2502,65 @@ function buildStandaloneHTML(){
     return css.trim();
   }
   const headCSS = collectCurrentHeadCSS();
+  const savedFreeze = loadJSON(FREEZE_HEADERS_KEY);
+  const freezeEnabled = !!(savedFreeze && savedFreeze.enabled);
+  // Add minimal sticky header CSS to ensure freeze works even if outer CSS is pruned
+  const stickyCSS = `
+  .chartshell.freeze-headers thead tr.row.title1 th,
+  .chartshell.freeze-headers thead tr.row.title2 th{position:sticky;z-index:3;background:#fff}
+  .chartshell.freeze-headers thead tr.row.title1 th{top:var(--tc-sticky-top-1,0px)}
+  .chartshell.freeze-headers thead tr.row.title2 th{top:var(--tc-sticky-top-2,32px);z-index:4}
+  .chartshell-sticky-spacer{height:var(--tc-sticky-spacer,0px)}
+  `;
   const doc = `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${escapeHtml(exportTitle)}</title>
-<style>${headCSS}\n</style>
+${freezeEnabled ? '<meta name="flex-freeze-headers" content="1" />' : ''}
+<style>${headCSS}\n${stickyCSS}</style>
 </head>
 <body>
 ${content}
 <script>
+  // Persisted freeze headers behavior from source document
+  (function(){
+    function computeStickyOffsets(){
+      const tbl = document.querySelector('table.chartshell');
+      if(!tbl) return;
+      const head = tbl.querySelector('thead');
+      const r1 = head?.querySelector('tr.row.title1');
+      const r2 = head?.querySelector('tr.row.title2');
+      const rect1 = r1?.getBoundingClientRect();
+      const rect2 = r2?.getBoundingClientRect();
+      const topBase = 0;
+      const h1 = rect1 ? Math.ceil(rect1.height) : 0;
+      const h2 = rect2 ? Math.ceil(rect2.height) : 0;
+      document.documentElement.style.setProperty('--tc-sticky-top-1', topBase + 'px');
+      document.documentElement.style.setProperty('--tc-sticky-top-2', (topBase + h1) + 'px');
+      document.documentElement.style.setProperty('--tc-sticky-spacer', (h1 + h2) + 'px');
+    }
+    function applyFreezeHeaders(){
+      const tbl = document.querySelector('table.chartshell');
+      if(!tbl) return;
+      tbl.classList.add('freeze-headers');
+      const wrapper = tbl.closest('.chartshell-wrapper') || tbl.parentElement;
+      let spacer = wrapper?.querySelector(':scope > .chartshell-sticky-spacer');
+      if(!spacer){ spacer = document.createElement('div'); spacer.className = 'chartshell-sticky-spacer'; if(wrapper) wrapper.insertBefore(spacer, tbl); else tbl.parentElement?.insertBefore(spacer, tbl); }
+      computeStickyOffsets();
+      window.addEventListener('resize', computeStickyOffsets);
+    }
+    // Read preference from embedded data attribute if present
+    const root = document.documentElement;
+    const shouldFreeze = (function(){
+      try{
+        const meta = document.querySelector('meta[name="flex-freeze-headers"]');
+        return meta && meta.getAttribute('content') === '1';
+      }catch(_){ return false; }
+    })();
+    if(shouldFreeze){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', applyFreezeHeaders); else applyFreezeHeaders(); }
+  })();
   document.querySelectorAll('.toggle').forEach(t=> {
     const parent = t.parentElement;
     t.addEventListener('click', ()=> {
