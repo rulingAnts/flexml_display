@@ -171,46 +171,46 @@
     background: transparent !important;
   }
 
-  /* Table layout for print (chart only) */
-  .chartshell {
+  /* Table layout for print (chart only, opt-in via .print-compact class) */
+  .chartshell.print-compact {
     width: 100% !important;       /* fit page width */
     border-collapse: collapse !important;
     border-spacing: 0 !important;
   }
 
   /* Remove colored headers; rely on thicker borders */
-  .row.title1 th,
-  .row.title2 th {
+  .chartshell.print-compact .row.title1 th,
+  .chartshell.print-compact .row.title2 th {
     background: transparent !important;
   }
 
   /* Solid borders for cells and group rails (chart only) */
-  .chartshell th, .chartshell td {
+  .chartshell.print-compact th, .chartshell.print-compact td {
     border: 1px solid #000 !important;
     padding: 6px 6px !important; /* a bit tighter for paper */
   }
-  .chartshell th.group-end, .chartshell td.group-end {
+  .chartshell.print-compact th.group-end, .chartshell.print-compact td.group-end {
     border-right: 2px solid #000 !important;
   }
   /* Preserve thicker sentence/paragraph end borders in print */
-  .chartshell tr.endSent > th, .chartshell tr.endSent > td {
+  .chartshell.print-compact tr.endSent > th, .chartshell.print-compact tr.endSent > td {
     border-bottom: var(--row-end-border) !important;
   }
-  .chartshell tr.endPara > th, .chartshell tr.endPara > td {
+  .chartshell.print-compact tr.endPara > th, .chartshell.print-compact tr.endPara > td {
     border-bottom: var(--para-end-border) !important;
   }
-  .chartshell tr > .group-start:first-child {
+  .chartshell.print-compact tr > .group-start:first-child {
     border-left: 2px solid #000 !important;
   }
 
   /* Keep rows together if possible (browser support varies) */
-  .chartshell tr {
+  .chartshell.print-compact tr {
     page-break-inside: avoid;
     break-inside: avoid;
   }
 
   /* Interlinear: keep gloss readable in grayscale */
-  .chartshell .interlinear .g {
+  .chartshell.print-compact .interlinear .g {
     color: #333 !important;
   }
 
@@ -1785,6 +1785,10 @@ async function renderTextChart(xmlDoc){
     if(dbg && ['1','true','yes','on'].includes(dbg.toLowerCase())){
       proc.setParameter(null, 'debug', 'true');
     }
+    // Enable compact print class in-app; exports will remove the class
+    proc.setParameter(null, 'printCompact', 'true');
+    // Allow per-chart notes column width override from CSS custom property if present
+    // We can't read computed style before rendering; rely on default or future UI setting.
   }catch(_){/* no-op if params unsupported */}
 
   // Run transform to a fragment, then extract the body contents if present
@@ -2600,7 +2604,11 @@ function buildStandaloneHTML(){
   // Keep column resizers in export so users can continue adjusting widths
   // Ensure destination table is marked as resizable for any styling hooks (optional)
   const dstTblForFlag = clone.querySelector('table.chartshell');
-  if (dstTblForFlag) dstTblForFlag.setAttribute('data-resizable', '1');
+  if (dstTblForFlag) {
+    dstTblForFlag.setAttribute('data-resizable', '1');
+    // Drop compact print styling in exported snapshot; users can still toggle via CSS if desired
+    dstTblForFlag.classList.remove('print-compact');
+  }
   if(prologueNode){
     content += prologueNode.outerHTML; // put prologue first
     const cPrologue = clone.querySelector(':scope > .chart-prologue');
@@ -2641,12 +2649,12 @@ function buildStandaloneHTML(){
     // Inline <style> tags in order
     document.head.querySelectorAll('style').forEach((s, idx)=>{
       const label = s.id ? `style#${s.id}` : `style[${idx}]`;
-      css += `\n/* ${label} */\n` + (s.textContent || '') + '\n';
+      const txt = s.textContent || '';
+      if(txt) css += `\n/* ${label} */\n` + txt + '\n';
     });
-    // Attempt to inline same-origin linked stylesheets
+    // Attempt to inline same-origin linked stylesheets (unchanged; include all rules)
     Array.from(document.styleSheets || []).forEach(ss => {
       try{
-        // Only include sheets originating from a <link> node we can read
         if(ss && ss.ownerNode && ss.ownerNode.tagName === 'LINK' && ss.cssRules){
           css += `\n/* linked stylesheet: ${ss.href || ''} */\n`;
           for(const rule of ss.cssRules){ css += rule.cssText + '\n'; }

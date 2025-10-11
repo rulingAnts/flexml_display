@@ -4,6 +4,16 @@
 
   <!-- Debug toggle: when 'true', visible warning messages are shown in cells with data issues. -->
   <xsl:param name="debug" select="'false'"/>
+  
+  <!-- When 'true', chartshell will include a 'print-compact' class to allow
+    opt-in, scoped print adjustments via CSS selectors like
+    .chartshell.print-compact @media print { ... }. Default is 'false' so
+    exports need not strip CSS rules in JavaScript. -->
+  <xsl:param name="printCompact" select="'false'"/>
+
+  <!-- Optional per-chart notes column width (e.g., '22ch', '280px'). If set,
+    will be applied via an inline CSS custom property named 'notes-col-width' on the table. -->
+  <xsl:param name="notesColWidth" select="''"/>
 
   <!-- ========================
        CSS / style variables
@@ -145,6 +155,19 @@
   <xsl:template name="emit-style">
     <style>
       <xsl:value-of select="$css" disable-output-escaping="yes"/>
+      /*
+        Hook for print adjustments (scoped):
+        Add compact print rules in your host page targeting
+        .chartshell.print-compact within an @media print block, for example:
+
+        @media print {
+          .chartshell.print-compact { font-size: 12px; }
+          .chartshell.print-compact td, .chartshell.print-compact th { padding: 4px 6px; }
+        }
+
+        This keeps compact print behavior opt-in (controlled by $printCompact)
+        and avoids needing to strip CSS during export.
+      */
     </style>
   </xsl:template>
 
@@ -177,7 +200,18 @@
         <xsl:call-template name="emit-metadata-comment"/>
 
         <div class="chartshell-wrapper">
-          <table class="chartshell">
+          <table>
+            <xsl:attribute name="class">
+              <xsl:text>chartshell</xsl:text>
+              <xsl:if test="$printCompact='true'">
+                <xsl:text> print-compact</xsl:text>
+              </xsl:if>
+            </xsl:attribute>
+            <xsl:if test="string-length($notesColWidth) &gt; 0">
+              <xsl:attribute name="style">
+                <xsl:text>--notes-col-width: </xsl:text><xsl:value-of select="$notesColWidth"/>
+              </xsl:attribute>
+            </xsl:if>
             <!-- emit colgroups -->
             <xsl:call-template name="emit-colgroups"/>
             <!-- emit body rows -->
