@@ -286,6 +286,10 @@
     <div class="rows">
   <div class="small-muted" style="margin:6px 0">Each abbreviation is fixed from the chart. Edit a Name and optional Description:</div>
       <div id="abbrevRows"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <button id="abbrevAddManual" class="small-btn" title="Add a custom abbreviation">Add abbreviation</button>
+        <span class="small-muted">Manual abbreviations are saved and exported with the chart.</span>
+      </div>
       <div id="abbrevEmptyMsg" class="small-muted" style="display:none">No listRef items found in this chart.</div>
     </div>
   </div>
@@ -562,18 +566,33 @@ function loadAbbrevPrefs(){
 function saveAbbrevPrefs(p){ saveJSON(ABBREV_PREFS_KEY, p); }
 function reconcileAbbrevPrefsWithLabels(prefs, labels){
   const out = { include: prefs.include, position: prefs.position, entries: { ...prefs.entries } };
-  // Remove entries not in labels
-  Object.keys(out.entries).forEach(k=>{ if(!labels.includes(k)) delete out.entries[k]; });
+  // Remove stale CHART entries; keep MANUAL ones always
+  Object.keys(out.entries).forEach(k=>{
+    const e = out.entries[k] || {};
+    const isManual = e.src === 'manual' || String(k).startsWith('__manual__');
+    if(!isManual){
+      // chart-sourced entries are removed if no longer present
+      if(!labels.includes(e.abbr || k)) delete out.entries[k];
+    }
+  });
   // Ensure entry for each label
   labels.forEach(l=>{
-    if(!out.entries[l]){
-      out.entries[l] = { abbr: l, name: '', def: '' };
+    const existing = out.entries[l] || Object.values(out.entries).find(e => e.abbr === l && e.src !== 'manual');
+    if(!existing){
+      out.entries[l] = { abbr: l, name: '', def: '', src: 'chart' };
     } else {
       // migrate legacy shape {label, def} where label was previously editable: treat it as name
-      const e = out.entries[l];
+      const e = existing;
       if(e.label !== undefined && e.name === undefined){ e.name = e.label || ''; delete e.label; }
       if(e.abbr === undefined) e.abbr = l;
       if(e.def === undefined) e.def = '';
+      if(e.src === undefined) e.src = 'chart';
+      // If existing is not keyed by l, re-key it
+      if(!out.entries[l]){
+        // find its key
+        const kFound = Object.keys(out.entries).find(k => out.entries[k] === e);
+        if(kFound && kFound !== l){ delete out.entries[kFound]; out.entries[l] = e; }
+      }
     }
   });
   return out;
@@ -586,6 +605,7 @@ function buildAbbrevControls(labels){
   const rowsHost = byId('abbrevRows');
   const emptyMsg = byId('abbrevEmptyMsg');
   const resetBtn = byId('abbrevResetFromChart');
+  const addBtn = byId('abbrevAddManual');
   globalState.abbrevPrefs = reconcileAbbrevPrefsWithLabels(loadAbbrevPrefs(), labels);
   includeCb.checked = !!globalState.abbrevPrefs.include;
   posSel.value = globalState.abbrevPrefs.position;
@@ -596,12 +616,46 @@ function buildAbbrevControls(labels){
     keys.sort((a,b)=> a.localeCompare(b, undefined, {numeric:true,sensitivity:'base'})).forEach(k=>{
       const ent = globalState.abbrevPrefs.entries[k];
       const row = document.createElement('div'); row.className = 'abbr-row';
-      const abbrEl = document.createElement('span'); abbrEl.className = 'abbr-abbr'; abbrEl.textContent = ent.abbr || k;
+      let abbrCell;
+      const isManual = ent.src === 'manual' || String(k).startsWith('__manual__');
+      if(isManual){
+        const abbrIn = document.createElement('input'); abbrIn.type = 'text'; abbrIn.value = ent.abbr || ''; abbrIn.placeholder = 'Abbreviation (incl. parentheses)';
+        abbrIn.addEventListener('input', ()=>{
+          ent.abbr = abbrIn.value;
+          // If abbr is valid and unique, migrate key
+          const trimmed = (ent.abbr || '').trim();
+          if(trimmed && !globalState.abbrevPrefs.entries[trimmed]){
+            delete globalState.abbrevPrefs.entries[k];
+            globalState.abbrevPrefs.entries[trimmed] = ent;
+            saveAbbrevPrefs(globalState.abbrevPrefs);
+            renderRows();
+            applyAbbrevToRenderArea(globalState.abbrevPrefs);
+          } else {
+            saveAbbrevPrefs(globalState.abbrevPrefs);
+            applyAbbrevToRenderArea(globalState.abbrevPrefs);
+          }
+        });
+        abbrCell = abbrIn;
+      } else {
+        const abbrEl = document.createElement('span'); abbrEl.className = 'abbr-abbr'; abbrEl.textContent = ent.abbr || k; abbrCell = abbrEl;
+      }
       const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = ent.name || ''; nameIn.placeholder = 'Name';
       const defIn = document.createElement('input'); defIn.type = 'text'; defIn.value = ent.def || ''; defIn.placeholder = 'Description (optional)';
       nameIn.addEventListener('input', ()=>{ ent.name = nameIn.value; saveAbbrevPrefs(globalState.abbrevPrefs); applyAbbrevToRenderArea(globalState.abbrevPrefs); });
       defIn.addEventListener('input', ()=>{ ent.def = defIn.value; saveAbbrevPrefs(globalState.abbrevPrefs); applyAbbrevToRenderArea(globalState.abbrevPrefs); });
-      row.appendChild(abbrEl); row.appendChild(nameIn); row.appendChild(defIn);
+      row.appendChild(abbrCell); row.appendChild(nameIn); row.appendChild(defIn);
+      if(isManual){
+        const delBtn = document.createElement('button'); delBtn.className = 'small-btn secondary'; delBtn.textContent = 'Remove';
+        delBtn.addEventListener('click', ()=>{
+          delete globalState.abbrevPrefs.entries[k];
+          saveAbbrevPrefs(globalState.abbrevPrefs);
+          renderRows();
+          applyAbbrevToRenderArea(globalState.abbrevPrefs);
+        });
+        // make a 4th column for remove button
+        row.style.gridTemplateColumns = 'auto 1fr 2fr auto';
+        row.appendChild(delBtn);
+      }
       rowsHost.appendChild(row);
     });
   }
@@ -611,6 +665,14 @@ function buildAbbrevControls(labels){
     resetBtn.addEventListener('click', ()=>{
       globalState.abbrevPrefs = reconcileAbbrevPrefsWithLabels(globalState.abbrevPrefs, globalState.chartAbbrevLabels || []);
       saveAbbrevPrefs(globalState.abbrevPrefs); renderRows(); applyAbbrevToRenderArea(globalState.abbrevPrefs);
+    });
+    addBtn.addEventListener('click', ()=>{
+      // create a placeholder manual entry with a temp key
+      const tempKey = '__manual__' + Date.now() + '_' + Math.floor(Math.random()*10000);
+      globalState.abbrevPrefs.entries[tempKey] = { abbr: '', name: '', def: '', src: 'manual' };
+      saveAbbrevPrefs(globalState.abbrevPrefs);
+      renderRows();
+      applyAbbrevToRenderArea(globalState.abbrevPrefs);
     });
     panel.dataset.wired = '1';
   }
