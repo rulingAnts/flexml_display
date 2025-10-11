@@ -10,8 +10,13 @@
     --muted:#6c6c6c;
     --bg:#fbfbfb;
     --card:#fff;
-      const converted = convertTextOrHtmlToHtml(postHtml, !!auto);
-      content += `\n<div class=\"chart-epilogue\">${converted}</div>`;
+    --border:#e2e2e2;
+    --highlight:#fff2b8;
+  }
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:18px;background:var(--bg);color:#111}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  h1{font-size:1.1rem;margin:0}
+  textarea{width:720px;max-width:100%;height:220px;font-family:monospace;padding:8px;border:1px solid var(--border);border-radius:6px;background:linear-gradient(#fff,#fcfcfc)}
   input[type=file]{padding:6px}
   button{background:var(--accent);color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
   button.secondary{background:#ddd;color:#111}
@@ -276,6 +281,9 @@
     <button id="printBtn" class="secondary">Print / Export to PDF</button>
     <button id="openBtn" class="secondary" style="display:none">Open in new window</button>
     <button id="saveBtn" class="secondary">Save as HTML</button>
+    <button id="exportSettingsBtn" class="secondary" title="Export all viewer settings as JSON">Export Settings</button>
+    <button id="importSettingsBtn" class="secondary" title="Import viewer settings from JSON">Import Settings</button>
+    <input id="settingsImportInput" type="file" accept="application/json,.json" style="display:none" />
   </div>
 </div>
 
@@ -607,6 +615,54 @@ byId('saveBtn').addEventListener('click', async ()=>{
   URL.revokeObjectURL(a.href);
 });
 
+// Export / Import Settings (localStorage backup)
+function collectAllSettings(){
+  const keys = [
+    LANG_PREFS_KEY,
+    WORDFORM_PREFS_KEY,
+    TEXTCHART_PROLOGUE_KEY,
+    TEXTCHART_POSTLOGUE_KEY,
+    PRINT_HEADERS_KEY,
+    FREEZE_HEADERS_KEY,
+    ABBREV_PREFS_KEY,
+    LISTREF_PREFS_KEY,
+    COLLAPSE_STATE_KEY
+  ];
+  const out = {};
+  keys.forEach(k=>{ try{ const v = localStorage.getItem(k); if(v !== null) out[k] = JSON.parse(v); } catch(_){ /* ignore parse errors */ } });
+  return out;
+}
+function importAllSettings(obj){
+  if(!obj || typeof obj !== 'object') throw new Error('Invalid settings file');
+  Object.keys(obj).forEach(k=>{ try{ localStorage.setItem(k, JSON.stringify(obj[k])); } catch(_){ /* ignore */ } });
+}
+function downloadJSON(filename, data){
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+}
+const exportBtn = byId('exportSettingsBtn');
+const importBtn = byId('importSettingsBtn');
+const importInput = byId('settingsImportInput');
+if(exportBtn){ exportBtn.addEventListener('click', ()=>{
+  const data = collectAllSettings();
+  const ts = new Date().toISOString().replace(/[:.]/g,'-');
+  downloadJSON(`flexxml-viewer-settings-${ts}.json`, { __meta:{ app:'flexxml-viewer', version:1, exportedAt: new Date().toISOString() }, data });
+}); }
+if(importBtn && importInput){
+  importBtn.addEventListener('click', ()=> importInput.click());
+  importInput.addEventListener('change', async (e)=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    try{
+      const txt = await f.text();
+      const json = JSON.parse(txt);
+      const payload = json && (json.data || json);
+      importAllSettings(payload);
+      alert('Settings imported. Reloading to apply…');
+      location.reload();
+    }catch(err){ alert('Failed to import settings: ' + (err?.message || String(err))); }
+  });
+}
+
 byId('showNames').addEventListener('change', e=>{
   globalState.showNames = e.target.checked;
   document.querySelectorAll('[data-gen-label]').forEach(el=>{
@@ -826,11 +882,17 @@ function applyEpilogueToRenderArea(prefs){
   // Remove existing epilogue block
   area.querySelectorAll(':scope > .chart-epilogue').forEach(n=> n.remove());
   const { html, autoConvert } = (prefs || loadPostloguePrefs());
-  const content = html || '';
+  let content = html || '';
   if(!content || !content.trim()) return;
+  const appearsHtml = /<\s*[a-zA-Z!/]/.test(content);
+  if(autoConvert && !appearsHtml){
+    const norm = content.replace(/\r\n?/g, '\n');
+    const paras = norm.split(/\n{2,}/).map(s=> s.trim()).filter(Boolean);
+    content = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
+  }
   const block = document.createElement('div'); block.className = 'chart-epilogue';
-  const frag = convertTextOrHtmlToNodes(content, !!autoConvert);
-  block.appendChild(frag);
+  const wrapper = document.createElement('div'); wrapper.innerHTML = content;
+  Array.from(wrapper.childNodes).forEach(n => block.appendChild(n));
   // Insert epilogue at the very end of render area
   area.appendChild(block);
 }
@@ -1484,74 +1546,21 @@ function applyPrologueToRenderArea(prefs){
     prologue.appendChild(t);
   }
   if(prefaceHtml && prefaceHtml.trim()){
-    const frag = convertTextOrHtmlToNodes(prefaceHtml, !!autoConvert);
-    prologue.appendChild(frag);
+    // Convert plain text to HTML when auto-convert is on and content appears to be plain text.
+    const appearsHtml = /<\s*[a-zA-Z!/]/.test(prefaceHtml);
+    let htmlOut = prefaceHtml;
+    if(autoConvert && !appearsHtml){
+      // Treat double newlines as paragraph breaks, single newline as <br /> within a paragraph
+      const norm = prefaceHtml.replace(/\r\n?/g, '\n');
+      const paras = norm.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+      htmlOut = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
+    }
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = htmlOut;
+    Array.from(wrapper.childNodes).forEach(n => prologue.appendChild(n));
   }
   // If both are empty, remove the container to avoid extra spacing
   if(!prologue.childNodes.length){ prologue.remove(); }
-}
-
-/* ===== Shared conversion helpers for Prologue/Epilogue ===== */
-function hasAnyHtmlTag(s){ return /<\s*[a-zA-Z!\/?]/.test(s || ''); }
-function hasBlockTag(s){ return /<\s*(p|div|section|article|header|footer|aside|main|nav|h[1-6]|ul|ol|li|table|thead|tbody|tfoot|tr|td|th|blockquote|pre|figure|figcaption)\b/i.test(s || ''); }
-function isBlockElement(el){ if(!el || el.nodeType !== 1) return false; const n = el.nodeName.toLowerCase(); return (
-  n==='p'||n==='div'||n==='section'||n==='article'||n==='header'||n==='footer'||n==='aside'||n==='main'||n==='nav'||/^h[1-6]$/.test(n)||n==='ul'||n==='ol'||n==='li'||n==='table'||n==='thead'||n==='tbody'||n==='tfoot'||n==='tr'||n==='td'||n==='th'||n==='blockquote'||n==='pre'||n==='figure'||n==='figcaption'
-); }
-function cleanupAutoConvertedHtml(container){
-  // Unwrap <p> that directly wrap a single block element
-  Array.from(container.querySelectorAll('p')).forEach(p=>{
-    const kids = Array.from(p.childNodes).filter(n=> n.nodeType===1 || (n.nodeType===3 && n.nodeValue.trim()));
-    if(kids.length===1 && isBlockElement(kids[0])){
-      p.replaceWith(kids[0]);
-    }
-  });
-  // Unwrap <p> that contains only <br> (and whitespace)
-  Array.from(container.querySelectorAll('p')).forEach(p=>{
-    const meaningful = Array.from(p.childNodes).filter(n=> n.nodeType===1 || (n.nodeType===3 && n.nodeValue.trim()));
-    const onlyBrs = meaningful.length>0 && meaningful.every(n => n.nodeType===1 && n.nodeName==='BR');
-    if(onlyBrs){
-      const frag = document.createDocumentFragment();
-      Array.from(p.childNodes).forEach(n=> frag.appendChild(n));
-      p.replaceWith(frag);
-    }
-  });
-  // Remove leading/trailing and duplicate <br>
-  Array.from(container.querySelectorAll('br')).forEach(br=>{
-    const parent = br.parentElement;
-    if(!parent) return;
-    const prev = br.previousSibling; const next = br.nextSibling;
-    const prevIsBr = prev && prev.nodeType===1 && prev.nodeName==='BR';
-    const nextIsBr = next && next.nodeType===1 && next.nodeName==='BR';
-    const isFirst = !prev || (prev.nodeType===3 && !prev.nodeValue.trim());
-    const isLast = !next || (next.nodeType===3 && !next.nodeValue.trim());
-    if(prevIsBr || nextIsBr || isFirst || isLast){ br.remove(); }
-  });
-}
-function convertTextOrHtmlToNodes(input, autoConvert){
-  let html = String(input||'');
-  if(autoConvert){
-    const norm = html.replace(/\r\n?/g, '\n');
-    const parts = norm.split(/\n{2,}/);
-    const out = parts.map(part=>{
-      const hasTag = hasAnyHtmlTag(part);
-      const inner = (hasTag ? part : escapeHtml(part)).replace(/\n/g, '<br />');
-      if(hasBlockTag(part)) return inner;
-      return `<p>${inner}</p>`;
-    }).join('\n');
-    html = out;
-  }
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = html;
-  cleanupAutoConvertedHtml(wrapper);
-  const frag = document.createDocumentFragment();
-  Array.from(wrapper.childNodes).forEach(n=> frag.appendChild(n));
-  return frag;
-}
-function convertTextOrHtmlToHtml(input, autoConvert){
-  const frag = convertTextOrHtmlToNodes(input, autoConvert);
-  const tmp = document.createElement('div');
-  tmp.appendChild(frag);
-  return tmp.innerHTML;
 }
 
 /* ===== Append external HTML before/after the chart ===== */
@@ -2602,11 +2611,16 @@ function buildStandaloneHTML(){
   // Epilogue content (appears after everything else in export)
   try{
     const postPrefs = loadJSON(TEXTCHART_POSTLOGUE_KEY) || {};
-    const postHtml = postPrefs.html || '';
+    let postHtml = postPrefs.html || '';
     const auto = typeof postPrefs.autoConvert === 'boolean' ? postPrefs.autoConvert : true;
     if(postHtml && postHtml.trim()){
-      const converted = convertTextOrHtmlToHtml(postHtml, !!auto);
-      content += `\n<div class="chart-epilogue">${converted}</div>`;
+      const appearsHtml = /<\s*[a-zA-Z!/]/.test(postHtml);
+      if(auto && !appearsHtml){
+        const norm = postHtml.replace(/\r\n?/g, '\n');
+        const paras = norm.split(/\n{2,}/).map(s=>s.trim()).filter(Boolean);
+        postHtml = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
+      }
+      content += `\n<div class="chart-epilogue">${postHtml}</div>`;
     }
   }catch(_){/* ignore */}
 
