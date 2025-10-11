@@ -117,7 +117,8 @@
   #prologuePanel[data-collapsed="1"] .collapsible-body,
   #abbrevPanel[data-collapsed="1"] .collapsible-body,
   #appendHtmlPanel[data-collapsed="1"] .collapsible-body,
-  #listRefPanel[data-collapsed="1"] .collapsible-body{display:none}
+  #listRefPanel[data-collapsed="1"] .collapsible-body,
+  #postloguePanel[data-collapsed="1"] .collapsible-body{display:none}
   /* Grouping UI */
   .lr-group{border:1px solid #dcefdc;background:#f8fff8;border-radius:6px;padding:8px;margin-bottom:8px}
   .lr-group-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
@@ -386,7 +387,26 @@
   </div>
   </div>
 
-<!-- ListRef Styling/Ordering -->
+  <!-- Epilogue (HTML/Text after everything in export) -->
+  <div id="postloguePanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
+    <div class="collapsible-header" id="postlogueHeader">
+      <span class="small-muted">Epilogue (optional) — text or HTML to append at the very end</span>
+      <span class="chev">▸</span>
+    </div>
+    <div class="collapsible-body">
+      <div class="prologue-grid">
+        <label for="postlogueHtml">Epilogue</label>
+        <div class="full">
+          <textarea id="postlogueHtml" placeholder="Type text or HTML to appear at the very end (optional)"></textarea>
+          <label class="small-muted" style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <input id="postlogueAuto" type="checkbox" checked> Auto-convert line breaks (Enter = new paragraph, Shift+Enter = line break)
+          </label>
+        </div>
+      </div>
+    </div>
+    </div>
+
+  <!-- ListRef Styling/Ordering -->
 <div id="listRefPanel" class="listref-panel" aria-live="polite" style="display:none" data-collapsed="1">
   <div class="collapsible-header" id="listRefHeader">
     <span class="small-muted">Text Chart Marker Display and Order Settings</span>
@@ -456,6 +476,7 @@ function create(tag, attrs={}, text){
 const LANG_PREFS_KEY = 'flex_xml_viewer_lang_prefs_v1';
 const WORDFORM_PREFS_KEY = 'flex_xml_viewer_wordform_prefs_v1';
 const TEXTCHART_PROLOGUE_KEY = 'flex_textchart_prologue_v1';
+const TEXTCHART_POSTLOGUE_KEY = 'flex_textchart_postlogue_v1';
 const PRINT_HEADERS_KEY = 'flex_textchart_repeat_headers_v1';
 const FREEZE_HEADERS_KEY = 'flex_textchart_freeze_headers_v1';
 const ABBREV_PREFS_KEY = 'flex_textchart_abbrevs_v1';
@@ -474,7 +495,9 @@ let globalState = {
   beforeHtml: null,
   beforeHtmlName: '',
   afterHtml: null,
-  afterHtmlName: ''
+  afterHtmlName: '',
+  postlogueHtml: '',
+  postlogueAuto: true
 };
 
 function saveJSON(key, obj){ try{ localStorage.setItem(key, JSON.stringify(obj)); } catch(e){} }
@@ -765,6 +788,63 @@ function initPrologueControls(){
 // Ensure controls are initialized on load
 initPrologueControls();
 function showProloguePanel(show){ byId('prologuePanel').style.display = show ? 'block' : 'none'; }
+
+/* ===== Postlogue controls (stored and used only for export) ===== */
+function loadPostloguePrefs(){
+  const d = loadJSON(TEXTCHART_POSTLOGUE_KEY) || {};
+  return {
+    html: d.html || '',
+    autoConvert: typeof d.autoConvert === 'boolean' ? d.autoConvert : true
+  };
+}
+function savePostloguePrefs(p){ saveJSON(TEXTCHART_POSTLOGUE_KEY, p); }
+function initPostlogueControls(){
+  const panel = byId('postloguePanel'); if(!panel) return;
+  const ta = byId('postlogueHtml');
+  const auto = byId('postlogueAuto');
+  const prefs = loadPostloguePrefs();
+  if(ta) ta.value = prefs.html || '';
+  if(auto) auto.checked = !!prefs.autoConvert;
+  const onChange = ()=>{
+    const p = { html: ta?.value || '', autoConvert: !!(auto && auto.checked) };
+    savePostloguePrefs(p);
+    globalState.postlogueHtml = p.html; globalState.postlogueAuto = p.autoConvert;
+    applyEpilogueToRenderArea(p);
+  };
+  ta?.addEventListener('input', onChange);
+  auto?.addEventListener('change', onChange);
+  // keyboard conveniences similar to prologue
+  ta?.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){
+      e.preventDefault();
+      const isShift = e.shiftKey; const val = ta.value; const start = ta.selectionStart; const end = ta.selectionEnd;
+      const insertText = isShift ? '\n' : '\n\n';
+      ta.value = val.slice(0,start) + insertText + val.slice(end);
+      const newPos = start + insertText.length; ta.selectionStart = ta.selectionEnd = newPos; onChange();
+    }
+  });
+}
+function showPostloguePanel(show){ const p = byId('postloguePanel'); if(p) p.style.display = show ? 'block' : 'none'; }
+
+function applyEpilogueToRenderArea(prefs){
+  const area = byId('renderArea'); if(!area) return;
+  // Remove existing epilogue block
+  area.querySelectorAll(':scope > .chart-epilogue').forEach(n=> n.remove());
+  const { html, autoConvert } = (prefs || loadPostloguePrefs());
+  let content = html || '';
+  if(!content || !content.trim()) return;
+  const appearsHtml = /<\s*[a-zA-Z!/]/.test(content);
+  if(autoConvert && !appearsHtml){
+    const norm = content.replace(/\r\n?/g, '\n');
+    const paras = norm.split(/\n{2,}/).map(s=> s.trim()).filter(Boolean);
+    content = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
+  }
+  const block = document.createElement('div'); block.className = 'chart-epilogue';
+  const wrapper = document.createElement('div'); wrapper.innerHTML = content;
+  Array.from(wrapper.childNodes).forEach(n => block.appendChild(n));
+  // Insert epilogue at the very end of render area
+  area.appendChild(block);
+}
 /* ===== ListRef (hide/style/order) controls ===== */
 function collectListRefLabelsFromRendered(area){
   const nodes = Array.from(area.querySelectorAll('.interlinear .pair.listRef[data-listref]'));
@@ -1526,6 +1606,10 @@ async function renderDocument(xmlDoc){
     // Wire collapsibles (collapsed by default; persisted)
     wireCollapsible('prologuePanel','prologueHeader');
     applyPrologueToRenderArea(loadProloguePrefs());
+  // Show Postlogue controls (for export)
+  showPostloguePanel(true);
+  if(!byId('postloguePanel').dataset.wired){ initPostlogueControls(); byId('postloguePanel').dataset.wired = '1'; }
+  wireCollapsible('postloguePanel','postlogueHeader');
     // Scan listRef abbreviations and show Abbrev controls
     globalState.chartAbbrevLabels = collectListRefLabelsFromXml(xmlDoc);
     showAbbrevPanel(true);
@@ -1548,6 +1632,8 @@ async function renderDocument(xmlDoc){
       // Now insert after-chart HTML in final position
       applyAppendedHtmlToRenderArea();
       wireCollapsible('appendHtmlPanel','appendHeader');
+      // Insert Epilogue live preview at end
+      applyEpilogueToRenderArea(loadPostloguePrefs());
       // Collect ListRef labels from rendered DOM (data-listref set by XSL), build controls with suggested order, and apply prefs
       globalState.listRefLabels = collectListRefLabelsFromRendered(area);
       buildListRefControls(globalState.listRefLabels, suggestedOrder);
@@ -1611,6 +1697,7 @@ async function renderDocument(xmlDoc){
   if(fhc2) fhc2.style.display = 'none';
   setPrintHeadersEnabled(false);
   showListRefPanel(false);
+  showPostloguePanel(false);
 }
 
 /* ===== Text Chart detection and rendering (XSLT) ===== */
@@ -2469,6 +2556,22 @@ function buildStandaloneHTML(){
     if(cPrologue) cPrologue.remove(); // remove from rest of content
   }
   content += clone.innerHTML;
+
+  // Epilogue content (appears after everything else in export)
+  try{
+    const postPrefs = loadJSON(TEXTCHART_POSTLOGUE_KEY) || {};
+    let postHtml = postPrefs.html || '';
+    const auto = typeof postPrefs.autoConvert === 'boolean' ? postPrefs.autoConvert : true;
+    if(postHtml && postHtml.trim()){
+      const appearsHtml = /<\s*[a-zA-Z!/]/.test(postHtml);
+      if(auto && !appearsHtml){
+        const norm = postHtml.replace(/\r\n?/g, '\n');
+        const paras = norm.split(/\n{2,}/).map(s=>s.trim()).filter(Boolean);
+        postHtml = paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`).join('\n');
+      }
+      content += `\n<div class="chart-epilogue">${postHtml}</div>`;
+    }
+  }catch(_){/* ignore */}
 
   // Pick a title for the export: prefer H1 from prologue, then any heading/div/p, else fallback
   let exportTitle = 'FLEx XML View Export';
