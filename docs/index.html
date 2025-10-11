@@ -134,6 +134,11 @@
   @media print {
     .chart-endnotes { break-before: page; page-break-before: always; }
   }
+  /* HTML tooltip for endnote previews */
+  .note-tooltip{position:fixed;max-width:min(400px, 60vw);z-index:9999;background:#111;color:#fff;padding:8px 10px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.25);font-size:0.9rem;line-height:1.3}
+  .note-tooltip :where(p){margin:0.4em 0}
+  .note-tooltip a{color:#9ecbff}
+  .note-tooltip .arrow{position:absolute;width:10px;height:10px;background:#111;transform:rotate(45deg)}
   /* Print-friendly adjustments */
 @media print {
   /* Page margins */
@@ -231,6 +236,18 @@
   /* Page breaks for inserted blocks */
   .inserted-html-before-prologue { break-after: page; page-break-after: always; }
   .inserted-html-after-chart { break-before: page; page-break-before: always; }
+
+  /* Replace endnote link markers in notes column with a plain marker for print/PDF */
+  .chartshell.endnotes-mode .notes-col .note-link {
+    color: #000 !important;
+    text-decoration: none !important;
+    pointer-events: none !important;
+  }
+  .chartshell.endnotes-mode .notes-col .note-link sup { display: none !important; }
+  .chartshell.endnotes-mode .notes-col .note-link::after {
+    content: " *"; /* or " (see notes)" if you prefer */
+    font-size: 0.95em;
+  }
 }
 </style>
 </head>
@@ -1711,6 +1728,8 @@ async function renderDocument(xmlDoc){
     wireCollapsible('listRefPanel','listRefHeader');
     if(rendered){
       area.appendChild(rendered);
+      // Wire note tooltips after chart content is in the DOM
+      if(window.wireNoteTooltips){ try{ window.wireNoteTooltips(); }catch(_){} }
       // Enable column resizing on the text chart table
       enableTextChartColumnResize(area);
       // Apply freeze headers if saved and show control
@@ -2860,6 +2879,53 @@ ${content}
     if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initExportResizing);
     else initExportResizing();
   })();
+  // Endnote HTML tooltip wiring (exported doc)
+  (function(){
+    let tipEl = null; let hideTimer = null;
+    function ensureTip(){ if(!tipEl){ tipEl = document.createElement('div'); tipEl.className = 'note-tooltip'; const arrow = document.createElement('div'); arrow.className='arrow'; tipEl.appendChild(arrow); document.body.appendChild(tipEl); } return tipEl; }
+    function setTipContent(html){ const arrow = tipEl.querySelector('.arrow'); tipEl.innerHTML=''; tipEl.appendChild(arrow); const box = document.createElement('div'); box.innerHTML = html; tipEl.appendChild(box); }
+    function positionTipFor(target, evt){
+      const rect = target.getBoundingClientRect();
+      const margin = 8; const arrow = tipEl.querySelector('.arrow');
+      tipEl.style.visibility='hidden'; tipEl.style.display='block';
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const tipW = Math.min(400, tipEl.offsetWidth || 0), tipH = tipEl.offsetHeight || 0;
+      let top = rect.bottom + margin; let left = rect.left;
+      if(evt && typeof evt.clientX==='number'){ left = evt.clientX + 12; }
+      if(top + tipH > vh - margin){ top = Math.max(margin, rect.top - tipH - margin); }
+      left = Math.max(margin, Math.min(left, vw - tipW - margin));
+  tipEl.style.top = Math.round(top) + 'px';
+  tipEl.style.left = Math.round(left) + 'px';
+  const aSize = 10; arrow.style.width = aSize + 'px'; arrow.style.height = aSize + 'px';
+  const arrowTop = (top >= rect.bottom) ? (tipEl.offsetHeight - 1) : (-aSize/2);
+  arrow.style.top = arrowTop + 'px';
+  const centerX = rect.left + rect.width/2; const ax = Math.max(aSize, Math.min(centerX - left - aSize/2, tipW - 2*aSize));
+  arrow.style.left = ax + 'px';
+      tipEl.style.visibility='visible';
+    }
+    function showTip(link, evt){
+      clearTimeout(hideTimer);
+      const contentEl = link.parentElement && link.parentElement.querySelector('.note-tooltip-content');
+      if(!contentEl) return;
+      ensureTip(); setTipContent(contentEl.innerHTML); positionTipFor(link, evt);
+    }
+    function scheduleHide(){ clearTimeout(hideTimer); hideTimer = setTimeout(()=>{ if(tipEl) tipEl.style.display='none'; }, 200); }
+    function cancelHide(){ clearTimeout(hideTimer); }
+    function wire(){
+      const links = Array.from(document.querySelectorAll('.note-link'));
+      links.forEach(l=>{
+        l.addEventListener('mouseenter', (e)=>{ cancelHide(); showTip(l, e); });
+        l.addEventListener('mousemove', (e)=>{ if(tipEl && tipEl.style.display!=='none'){ positionTipFor(l, e); } });
+        l.addEventListener('mouseleave', scheduleHide);
+        l.addEventListener('focus', (e)=>{ cancelHide(); showTip(l, e); });
+        l.addEventListener('blur', scheduleHide);
+      });
+      document.addEventListener('scroll', ()=>{ if(tipEl) tipEl.style.display='none'; }, true);
+      window.addEventListener('resize', ()=>{ if(tipEl){ tipEl.style.display='none'; } });
+    }
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', wire);
+    else wire();
+  })();
 <\/script>
 </body>
 </html>`;
@@ -2967,6 +3033,70 @@ function enableTextChartColumnResize(root){
     tbl.style.width = 'auto';
     tbl.style.maxWidth = '100%';
 }
+
+/* ===== Endnote tooltip (HTML) ===== */
+(function(){
+  let tipEl = null; let hideTimer = null;
+  function ensureTip(){ if(!tipEl){ tipEl = document.createElement('div'); tipEl.className = 'note-tooltip'; const arrow = document.createElement('div'); arrow.className='arrow'; tipEl.appendChild(arrow); document.body.appendChild(tipEl); } return tipEl; }
+  function setTipContent(html){ const arrow = tipEl.querySelector('.arrow'); tipEl.innerHTML=''; tipEl.appendChild(arrow); const box = document.createElement('div'); box.innerHTML = html; tipEl.appendChild(box); }
+  function positionTipFor(target, evt){
+    const rect = target.getBoundingClientRect();
+    const margin = 8; const arrow = tipEl.querySelector('.arrow');
+    tipEl.style.visibility='hidden'; tipEl.style.display='block';
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const tipW = Math.min(400, tipEl.offsetWidth || 0), tipH = tipEl.offsetHeight || 0;
+    let top = rect.bottom + margin; let left = rect.left;
+    if(evt && typeof evt.clientX==='number'){ left = evt.clientX + 12; }
+    // if overflow bottom, place above
+    if(top + tipH > vh - margin){ top = Math.max(margin, rect.top - tipH - margin); }
+    // clamp horizontally
+    left = Math.max(margin, Math.min(left, vw - tipW - margin));
+    tipEl.style.top = `${Math.round(top)}px`;
+    tipEl.style.left = `${Math.round(left)}px`;
+    // arrow placement
+    const aSize = 10; arrow.style.width=`${aSize}px`; arrow.style.height=`${aSize}px`;
+    const arrowTop = (top >= rect.bottom) ? (tipEl.offsetHeight - 1) : (-aSize/2);
+    arrow.style.top = `${arrowTop}px`;
+    const centerX = rect.left + rect.width/2; const ax = Math.max(aSize, Math.min(centerX - left - aSize/2, tipW - 2*aSize));
+    arrow.style.left = `${ax}px`;
+    tipEl.style.visibility='visible';
+  }
+  function showTip(link, evt){
+    clearTimeout(hideTimer);
+    const contentEl = link.parentElement?.querySelector('.note-tooltip-content');
+    if(!contentEl) return;
+    const html = contentEl.innerHTML;
+    ensureTip(); setTipContent(html); positionTipFor(link, evt);
+  }
+  function scheduleHide(){ clearTimeout(hideTimer); hideTimer = setTimeout(()=>{ if(tipEl) tipEl.style.display='none'; }, 200); }
+  function cancelHide(){ clearTimeout(hideTimer); }
+  function wire(container){
+    const links = Array.from(container.querySelectorAll('.note-link'));
+    links.forEach(l=>{
+      l.addEventListener('mouseenter', (e)=>{ cancelHide(); showTip(l, e); });
+      l.addEventListener('mouseleave', scheduleHide);
+      l.addEventListener('mousemove', (e)=>{ if(tipEl && tipEl.style.display!=='none'){ positionTipFor(l, e); } });
+      l.addEventListener('focus', (e)=>{ cancelHide(); showTip(l, e); });
+      l.addEventListener('blur', scheduleHide);
+    });
+    if(!container.dataset.noteTooltipGlobal){
+      document.addEventListener('scroll', ()=>{ if(tipEl) tipEl.style.display='none'; }, true);
+      window.addEventListener('resize', ()=>{ if(tipEl){ tipEl.style.display='none'; } });
+      container.dataset.noteTooltipGlobal = '1';
+    }
+  }
+  // Wire after each render
+  function wireNow(){ try{ wire(document.getElementById('renderArea')); }catch(_){} }
+  // Expose global hook to wire tooltips after DOM updates
+  window.wireNoteTooltips = wireNow;
+  const origRenderDocument = window.renderDocument;
+  if(typeof origRenderDocument === 'function'){
+    window.renderDocument = async function(xml){ const r = await origRenderDocument(xml); wireNow(); return r; };
+  }
+  // Also wire on initial load and after text chart render completes from renderDocument flow
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', wireNow);
+  else wireNow();
+})();
 
 /* ===== Notes options controls ===== */
 const NOTES_PREFS_KEY = 'flex_textchart_notes_prefs_v1';

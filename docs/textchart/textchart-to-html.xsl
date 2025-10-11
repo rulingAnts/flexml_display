@@ -428,11 +428,14 @@
               </xsl:otherwise>
             </xsl:choose>
           </xsl:variable>
-          <a>
+          <a class="note-link">
             <xsl:attribute name="href">#endnote-<xsl:value-of select="$rawLabel"/></xsl:attribute>
             <xsl:attribute name="id">row-<xsl:value-of select="$rawLabel"/>-notes</xsl:attribute>
             <sup><xsl:value-of select="$rawLabel"/></sup>
           </a>
+          <div class="note-tooltip-content" style="display:none">
+            <xsl:apply-templates select="main"/>
+          </div>
         </xsl:when>
         <xsl:otherwise>
           <xsl:apply-templates select="main"/>
