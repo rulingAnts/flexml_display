@@ -1,7 +1,7 @@
 {
   "name": "flexml_display",
   "version": "2.0.0",
-  "description": "FLEx XML Viewer.",
+  "description": "FLExText Discourse Analysis Tool (and XML Exporter).",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.rulingants.flexmlviewer",
-    "productName": "FLEx XML Viewer",
+    "productName": "FLExText Discourse Analysis Tool (and XML Exporter)",
     "files": [
       "docs/**/*",
       "main.js",
