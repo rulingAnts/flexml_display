@@ -1,4 +1,4 @@
-const { app, BrowserWindow, nativeImage } = require('electron');
+const { app, BrowserWindow, nativeImage, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -51,6 +51,47 @@ function createWindow() {
 }
 
 app.on('ready', createWindow);
+
+// ===== Auto-updater (only in packaged apps) =====
+try{
+  const { autoUpdater } = require('electron-updater');
+  // Use electron-log for updater logs if available
+  try{
+    const log = require('electron-log');
+    autoUpdater.logger = log;
+    if(log && log.transports && log.transports.file){
+      log.transports.file.level = 'info';
+    }
+  }catch(_){ /* optional */ }
+  function setupAutoUpdater(){
+    // Guard: only run in packaged app context
+    if(!app.isPackaged) return;
+    // macOS/Windows cross-platform: default GitHub provider via electron-builder publish config
+    autoUpdater.autoDownload = true;
+    autoUpdater.on('error', (err)=>{
+      // Non-fatal: log, optional dialog in debug builds
+      // console.error('AutoUpdater error:', err);
+    });
+    autoUpdater.on('update-available', ()=>{
+      // Optionally inform user; we keep silent and download automatically
+    });
+    autoUpdater.on('update-downloaded', async (info)=>{
+      const res = await dialog.showMessageBox({
+        type: 'question',
+        buttons: ['Restart and Update', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        message: 'An update has been downloaded.',
+        detail: 'Restart now to apply the update?'
+      });
+      if(res.response === 0){ autoUpdater.quitAndInstall(); }
+    });
+    // Check on startup, then optionally periodically (e.g., every 6 hours)
+    autoUpdater.checkForUpdatesAndNotify().catch(()=>{});
+    // setInterval(()=> autoUpdater.checkForUpdates().catch(()=>{}), 6 * 60 * 60 * 1000);
+  }
+  app.on('ready', setupAutoUpdater);
+}catch(_){ /* electron-updater not installed in dev */ }
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

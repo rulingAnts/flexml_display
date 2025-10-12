@@ -2,6 +2,10 @@
   "name": "flexml_display",
   "version": "2.0.0",
   "description": "FLExText Discourse Analysis Tool (and XML Exporter).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rulingAnts/flexml_display.git"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -24,8 +28,8 @@
     "electron": "^38.2.2",
     "electron-builder": "^24.13.3",
     "png-to-ico": "^3.0.1",
-    "to-ico": "^1.1.5",
-    "sharp": "^0.34.4"
+    "sharp": "^0.34.4",
+    "to-ico": "^1.1.5"
   },
   "build": {
     "appId": "com.rulingants.flexmlviewer",
@@ -40,7 +44,10 @@
       "output": "dist"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.productivity"
     },
@@ -56,6 +63,17 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "license": "LICENSE"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "rulingAnts",
+        "repo": "flexml_display"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2"
   }
 }
