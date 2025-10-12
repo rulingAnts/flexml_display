@@ -13,6 +13,4 @@ Distribution notes
 - The upstream projects above provide complete license texts in their repositories. If required by your distribution policies, bundle those license files as well.
 
 No vendor JS bundles
-- The app does not currently bundle third‑party JavaScript libraries in `docs/`. If libraries are added later, list them here with name, license, and upstream URL.
-
-— End of file —
+- The app does not currently bundle third‑party JavaScript libraries in `docs/`. 
