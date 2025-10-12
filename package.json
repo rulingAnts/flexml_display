@@ -10,7 +10,10 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win nsis",
     "dist:win:portable": "electron-builder --win portable",
-    "dist:win:all": "electron-builder --win nsis portable"
+    "dist:win:all": "electron-builder --win nsis portable",
+    "icons": "node scripts/gen-icons.mjs",
+    "dist:mac": "npm run icons && electron-builder --mac dmg",
+    "dist:all": "npm run icons && electron-builder -mwl"
   },
   "author": "",
   "engines": {
@@ -21,6 +24,7 @@
     "electron": "^38.2.2",
     "electron-builder": "^24.13.3",
     "png-to-ico": "^3.0.1",
+    "to-ico": "^1.1.5",
     "sharp": "^0.34.4"
   },
   "build": {
@@ -34,6 +38,11 @@
     ],
     "directories": {
       "output": "dist"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.productivity"
     },
     "win": {
       "target": [
