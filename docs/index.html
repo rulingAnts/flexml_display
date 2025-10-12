@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>FLEx XML Viewer</title>
+<title>FLExText Discourse Analysis Tool (FDAT) (and FLEx XML Viwer/Exporter)</title>
 <style>
   :root{
     --accent:#0b6edb;
@@ -51,14 +51,16 @@
   .chartshell.freeze-headers thead tr.row.title1 th{ top: var(--tc-sticky-top-1, 0px); }
   .chartshell.freeze-headers thead tr.row.title2 th{ top: var(--tc-sticky-top-2, 32px); }
   /* Ensure borders render above body cells */
-  .chartshell.freeze-headers thead tr.row.title1{ z-index: 5; }
-  .chartshell.freeze-headers thead tr.row.title2{ z-index: 6; }
-  .chartshell.freeze-headers thead tr.row.title2 th{ z-index: 7; }
+  .chartshell.freeze-headers thead tr.row.title1{ z-index: 950; }
+  .chartshell.freeze-headers thead tr.row.title2{ z-index: 951; }
+  .chartshell.freeze-headers thead tr.row.title2 th{ z-index: 952; }
   .chartshell-wrapper{ position: relative; }
   .chartshell-sticky-spacer{ height: var(--tc-sticky-spacer, 0px); }
   /* Interlinear pair layout is defined by XSL-injected <style>; avoid overriding here. */
   .controls-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
   .prologue-panel{display:none;margin-top:10px;background:#f7fbff;border:1px solid #d9ebff;padding:10px 12px;border-radius:8px}
+  /* About panel is always visible on load (non-persistent collapsible) */
+  #aboutPanel{display:block}
   .prologue-grid{display:grid;grid-template-columns:140px 1fr;gap:8px 10px;align-items:center}
   .prologue-grid .full{grid-column:1 / -1}
   .prologue-grid input[type=text]{width:100%;padding:6px;border:1px solid var(--border);border-radius:6px}
@@ -118,7 +120,9 @@
   #abbrevPanel[data-collapsed="1"] .collapsible-body,
   #appendHtmlPanel[data-collapsed="1"] .collapsible-body,
   #listRefPanel[data-collapsed="1"] .collapsible-body,
-  #postloguePanel[data-collapsed="1"] .collapsible-body{display:none}
+  #postloguePanel[data-collapsed="1"] .collapsible-body,
+  #notesPanel[data-collapsed="1"] .collapsible-body,
+  #aboutPanel[data-collapsed="1"] .collapsible-body{display:none}
   /* Grouping UI */
   .lr-group{border:1px solid #dcefdc;background:#f8fff8;border-radius:6px;padding:8px;margin-bottom:8px}
   .lr-group-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
@@ -254,14 +258,19 @@
 <body>
 
 <header>
-  <h1>FLEx XML Viewer</h1>
+  <h1>FLExText Discourse Analysis Tool (FDAT) (and FLEx XML Viwer/Exporter)</h1>
   <div style="margin-left:auto" class="small-muted" hidden>© 2025 Seth Johnston</div>
 </header>
 
-  <section style="background:#eef5ff;border:1px solid #c8dbff;padding:10px 14px;border-radius:8px;margin-bottom:12px">
+  <section id="aboutPanel" class="prologue-panel" aria-live="polite" data-collapsed="0" data-no-persist="1" style="background:#eef5ff;border:1px solid #c8dbff;padding:0;border-radius:8px;margin-bottom:12px">
+    <div class="collapsible-header" id="aboutHeader" style="padding:10px 14px">
+      <span class="small-muted">About FLEx XML Viewer</span>
+      <span class="chev">▾</span>
+    </div>
+    <div class="collapsible-body" style="padding:10px 14px">
   <h2 style="font-size:1rem;margin-top:0">About FLEx XML Viewer</h2>
   <p>
-    <strong>FLEx XML Viewer</strong> is a client-side web app for viewing and exploring
+    <strong>FLExText Discourse Analysis Tool (FDAT)</strong> is a client-side web app for viewing and exploring
     <a href="https://software.sil.org/fieldworks/" target="_blank" rel="noopener noreferrer">FieldWorks (FLEx)</a>
     XML exports in a structured, readable format. This app is a part of the <a href="https://github.com/rulingAnts/flet" target="_blank" rel="noopener noreferrer">Field Linguistics Extension Tools collection</a>.
   </p>
@@ -278,12 +287,13 @@
   <p>
     This app does <em>not</em> process <strong>LIFT</strong> or <strong>FLExText</strong> exports — those should be opened directly in FLEx. XLingPaper XML exports can open with XLingPpaer. And Word XML files should be opened in Microsoft Word.
   </p>
-</section>
+    </div>
+  </section>
 
 <textarea id="xmlInput" placeholder="Paste XML here or choose a file..." hidden></textarea>
 
 <div class="controls-row">
-  <button id="transformBtn">Transform</button>
+  <button id="transformBtn">Preview</button>
   <button id="resetBtn" class="secondary">Reset</button>
 
   <label style="display:flex;align-items:center;gap:8px" class="small-muted">
@@ -300,9 +310,7 @@
 
   <div style="margin-left:auto;display:flex;gap:8px;align-items:left">
     <input id="fileInput" type="file" accept=".xml,.xml.txt" />
-    <button id="printBtn" class="secondary">Print / Export to PDF</button>
-    <button id="openBtn" class="secondary" style="display:none">Open in new window</button>
-    <button id="saveBtn" class="secondary">Save as HTML</button>
+  <button id="exportChartBtn" class="secondary">Export Discourse Chart</button>
     <button id="exportSettingsBtn" class="secondary" title="Export all viewer settings as JSON">Export Settings</button>
     <button id="importSettingsBtn" class="secondary" title="Import viewer settings from JSON">Import Settings</button>
     <input id="settingsImportInput" type="file" accept="application/json,.json" style="display:none" />
@@ -504,7 +512,8 @@
 </div>
 
 <div id="viewer" class="viewer" aria-live="polite">
-  <div id="renderArea" class="small-muted">Paste or upload an XML file, then click Transform.</div>
+  <div class="viewer-header" style="font-weight:600;margin-bottom:8px">Preview</div>
+  <div id="renderArea" class="small-muted">Paste or upload an XML file, then click Preview.</div>
 </div>
 
 <footer>
@@ -568,7 +577,7 @@ byId('fileInput').addEventListener('change', async e=>{
 
 byId('resetBtn').addEventListener('click', ()=>{
   byId('xmlInput').value = '';
-  byId('renderArea').innerHTML = '<div class="small-muted">Paste or upload an XML file, then click Transform.</div>';
+  byId('renderArea').innerHTML = '<div class="small-muted">Paste or upload an XML file, then click Preview.</div>';
   // Hide optional chart prologue controls when no chart is displayed
   showProloguePanel(false);
 });
@@ -580,30 +589,29 @@ byId('transformBtn').addEventListener('click', async ()=> {
     const p = new DOMParser();
     const xmlDoc = p.parseFromString(xmlText, 'application/xml');
     if(xmlDoc.querySelector('parsererror')) throw new Error('XML parse error');
+    // Collapse About panel on preview (non-persistent when data-no-persist=1)
+    const aboutPanel = byId('aboutPanel'); const aboutHeader = byId('aboutHeader');
+    if(aboutPanel && aboutHeader && aboutPanel.getAttribute('data-collapsed') !== '1'){
+      aboutPanel.setAttribute('data-collapsed','1');
+      const chev = aboutHeader.querySelector('.chev'); if(chev) chev.textContent = '▸';
+      aboutHeader.setAttribute('aria-expanded','false');
+      if(aboutPanel.getAttribute('data-no-persist') !== '1'){
+        const state = loadCollapseState(); state['aboutPanel'] = true; saveCollapseState(state);
+      }
+    }
     await renderDocument(xmlDoc);
   } catch(err){
     alert('Error parsing XML: ' + err.message);
   }
 });
 
-byId('openBtn').addEventListener('click', ()=>{
-  const html = buildStandaloneHTML();
-  const w = window.open('', '_blank');
-  w.document.write(html);
-  w.document.close();
-});
-
-// Print / Export to PDF
-byId('printBtn').addEventListener('click', ()=>{
-  // Build a standalone snapshot and print from a new window so content/styles are captured
-  const html = buildStandaloneHTML();
+// Export Discourse Chart: open exported chart in a new window with toolbar
+byId('exportChartBtn').addEventListener('click', ()=>{
+  const html = buildStandaloneHTML({ includeToolbar: true });
   const w = window.open('', '_blank');
   if(!w) return;
   w.document.write(html);
   w.document.close();
-  const tryPrint = () => { try { w.focus(); w.print(); } catch(_) {} };
-  if(w.document.readyState === 'complete') setTimeout(tryPrint, 60);
-  else w.addEventListener('load', () => setTimeout(tryPrint, 60));
 });
 
 function sanitizeFilename(name){
@@ -638,34 +646,6 @@ function suggestExportFilename(){
   if(!/\.html?$/i.test(name)) name += '.html';
   return name;
 }
-byId('saveBtn').addEventListener('click', async ()=>{
-  const html = buildStandaloneHTML();
-  const filename = suggestExportFilename();
-  // Use File System Access API if available (Chrome/Edge/Electron Chromium)
-  if(window.showSaveFilePicker){
-    try{
-      const handle = await window.showSaveFilePicker({
-        suggestedName: filename,
-        types: [{ description: 'HTML Document', accept: { 'text/html': ['.html', '.htm'] } }]
-      });
-      const writable = await handle.createWritable();
-      await writable.write(new Blob([html], {type:'text/html'}));
-      await writable.close();
-      return;
-    } catch(err){
-      if(err && err.name === 'AbortError') return; // user canceled
-      console.warn('showSaveFilePicker failed, falling back to download:', err);
-      // fall through to anchor download
-    }
-  }
-  // Fallback: classic download
-  const blob = new Blob([html], {type:'text/html'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-});
 
 // Export / Import Settings (localStorage backup)
 function collectAllSettings(){
@@ -819,7 +799,10 @@ function wireCollapsible(panelId, headerId){
   if(!panel || !header) return;
   let state = loadCollapseState();
   const key = panelId;
-  const collapsed = state[key] !== undefined ? !!state[key] : true;
+  const noPersist = panel.getAttribute('data-no-persist') === '1';
+  // default collapsed is taken from data-collapsed attribute if present; else default to true
+  const defaultCollapsed = panel.hasAttribute('data-collapsed') ? (panel.getAttribute('data-collapsed') === '1') : true;
+  const collapsed = noPersist ? defaultCollapsed : (state[key] !== undefined ? !!state[key] : defaultCollapsed);
   panel.setAttribute('data-collapsed', collapsed ? '1' : '0');
   const chev = header.querySelector('.chev'); if(chev) chev.textContent = collapsed ? '▸' : '▾';
   header.setAttribute('role','button'); header.setAttribute('tabindex','0'); header.setAttribute('aria-expanded', (!collapsed).toString());
@@ -828,7 +811,7 @@ function wireCollapsible(panelId, headerId){
     panel.setAttribute('data-collapsed', isCollapsed ? '0' : '1');
     if(chev) chev.textContent = isCollapsed ? '▾' : '▸';
     header.setAttribute('aria-expanded', isCollapsed ? 'true' : 'false');
-    state = loadCollapseState(); state[key] = !isCollapsed; saveCollapseState(state);
+    if(!noPersist){ state = loadCollapseState(); state[key] = !isCollapsed; saveCollapseState(state); }
   }
   header.addEventListener('click', toggle);
   header.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); toggle(); } });
@@ -891,6 +874,9 @@ function initPrologueControls(){
 // Ensure controls are initialized on load
 initPrologueControls();
 function showProloguePanel(show){ byId('prologuePanel').style.display = show ? 'block' : 'none'; }
+
+// Wire About panel collapsible on load
+wireCollapsible('aboutPanel','aboutHeader');
 
 /* ===== Postlogue controls (stored and used only for export) ===== */
 function loadPostloguePrefs(){
@@ -2585,7 +2571,8 @@ function scrollToAndHighlight(rowId){
 }
 
 /* ===== Build standalone HTML (for open/save) — note escaped closing tag to avoid template literal issues ===== */
-function buildStandaloneHTML(){
+function buildStandaloneHTML(opts){
+  opts = opts || {};
   const render = byId('renderArea');
   // Gather prologue (if any) + current render content (without duplicating prologue)
   let content = '';
@@ -2734,6 +2721,14 @@ function buildStandaloneHTML(){
   .chartshell.freeze-headers thead tr.row.title2 th{top:var(--tc-sticky-top-2,32px);z-index:4}
   .chartshell-sticky-spacer{height:var(--tc-sticky-spacer,0px)}
   `;
+  // Optional export toolbar markup
+  const exportToolbar = opts.includeToolbar ? (
+    '<div class="export-toolbar" role="region" aria-label="Export toolbar" style="position:sticky;top:0;z-index:1000;background:#f7faff;border-bottom:1px solid #dbe7ff;padding:8px 10px;display:flex;gap:8px;align-items:center;box-shadow:0 1px 0 rgba(0,0,0,0.03)">\
+      <button id="exportSaveBtn" style="background:#0b6edb;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer">Save Chart As… (HTML)</button>\
+      <button id="exportPrintBtn" style="background:#ddd;color:#111;border:none;padding:6px 10px;border-radius:6px;cursor:pointer">Print / Export to PDF</button>\
+      <div class="small-muted" style="margin-left:auto;color:#666">Toolbar is not printed</div>\
+    </div>'
+  ) : '';
   const doc = `<!doctype html>
 <html>
 <head>
@@ -2741,9 +2736,13 @@ function buildStandaloneHTML(){
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${escapeHtml(exportTitle)}</title>
 ${freezeEnabled ? '<meta name="flex-freeze-headers" content="1" />' : ''}
-<style>${headCSS}\n${stickyCSS}</style>
+<style>${headCSS}\n${stickyCSS}
+/* Hide export toolbar in print */
+@media print { .export-toolbar { display: none !important; } }
+</style>
 </head>
 <body>
+${exportToolbar}
 ${content}
 <script>
   // Persisted freeze headers behavior from source document
@@ -2756,7 +2755,9 @@ ${content}
       const r2 = head?.querySelector('tr.row.title2');
       const rect1 = r1?.getBoundingClientRect();
       const rect2 = r2?.getBoundingClientRect();
-      const topBase = 0;
+      // Offset by export toolbar height so sticky headers stay below it
+      const toolbar = document.querySelector('.export-toolbar');
+      const topBase = toolbar ? Math.ceil(toolbar.getBoundingClientRect().height || 0) : 0;
       const h1 = rect1 ? Math.ceil(rect1.height) : 0;
       const h2 = rect2 ? Math.ceil(rect2.height) : 0;
       document.documentElement.style.setProperty('--tc-sticky-top-1', topBase + 'px');
@@ -2771,7 +2772,8 @@ ${content}
       let spacer = wrapper?.querySelector(':scope > .chartshell-sticky-spacer');
       if(!spacer){ spacer = document.createElement('div'); spacer.className = 'chartshell-sticky-spacer'; if(wrapper) wrapper.insertBefore(spacer, tbl); else tbl.parentElement?.insertBefore(spacer, tbl); }
       computeStickyOffsets();
-      window.addEventListener('resize', computeStickyOffsets);
+  window.addEventListener('resize', computeStickyOffsets);
+  window.addEventListener('scroll', computeStickyOffsets, true);
     }
     // Read preference from embedded data attribute if present
     const root = document.documentElement;
@@ -2781,7 +2783,14 @@ ${content}
         return meta && meta.getAttribute('content') === '1';
       }catch(_){ return false; }
     })();
-    if(shouldFreeze){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', applyFreezeHeaders); else applyFreezeHeaders(); }
+    if(shouldFreeze){
+      if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', applyFreezeHeaders);
+      else applyFreezeHeaders();
+      // One more pass after load to account for toolbar height
+      window.addEventListener('load', computeStickyOffsets);
+      setTimeout(computeStickyOffsets, 50);
+      setTimeout(computeStickyOffsets, 200);
+    }
   })();
   document.querySelectorAll('.toggle').forEach(t=> {
     const parent = t.parentElement;
@@ -2925,6 +2934,44 @@ ${content}
     }
     if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', wire);
     else wire();
+  })();
+  // Export toolbar handlers (save and print)
+  (function(){
+    function suggestExportFilename(){
+      try{
+        var titleNode = document.querySelector('.chart-prologue h1, .chart-prologue h2, .chart-prologue h3, .chart-prologue div, .chart-prologue p');
+        var t = (titleNode && titleNode.textContent || '').trim().replace(/\s+/g,' ');
+        var base = t || 'FLEx XML View Export — Text Chart';
+        var name = base.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g,' ').trim();
+        if(!/\.html?$/i.test(name)) name += '.html';
+        return name;
+      }catch(_){ return 'FLEx XML View Export — Text Chart.html'; }
+    }
+    function saveAsHtml(){
+      try{
+        var html = document.documentElement.outerHTML;
+        var filename = suggestExportFilename();
+        if(window.showSaveFilePicker){
+          (async function(){
+            try{
+              const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'HTML Document', accept: { 'text/html': ['.html', '.htm'] } }] });
+              const writable = await handle.createWritable();
+              await writable.write(new Blob([html], {type:'text/html'}));
+              await writable.close();
+            }catch(err){ if(!(err && err.name==='AbortError')) fallbackDownload(html, filename); }
+          })();
+        } else {
+          fallbackDownload(html, filename);
+        }
+      }catch(_){ /* ignore */ }
+    }
+    function fallbackDownload(html, filename){
+      var blob = new Blob([html], {type:'text/html'});
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+    }
+    function printNow(){ try{ window.focus(); window.print(); }catch(_){ /* ignore */ } }
+    var saveBtn = document.getElementById('exportSaveBtn'); if(saveBtn) saveBtn.addEventListener('click', saveAsHtml);
+    var printBtn = document.getElementById('exportPrintBtn'); if(printBtn) printBtn.addEventListener('click', printNow);
   })();
 <\/script>
 </body>
