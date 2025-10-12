@@ -1,86 +1,18 @@
-# Third-Party Licenses
+# Third‑Party Notices
 
-This project (flexml_display) is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. It bundles the following third‑party JavaScript libraries, which are distributed under permissive MIT licenses. Their original license notices are preserved below verbatim.
+This application is licensed under the GNU Affero General Public License v3.0 (AGPL‑3.0).
 
-| Library      | Version (pinned) | License | Upstream Repository | Local Path | Notes |
-|--------------|------------------|---------|---------------------|-----------|-------|
-| ExcelJS      | 4.3.0            | MIT     | https://github.com/exceljs/exceljs | `docs/vendor/exceljs.min.js` | Replace placeholder stub with official build for full functionality |
-| FileSaver.js | 2.0.5            | MIT     | https://github.com/eligrey/FileSaver.js | `docs/vendor/file-saver.min.js` | Replace trimmed placeholder with official build |
+It redistributes the following third‑party components at runtime. Each is used under its respective license; see upstream links for full license texts.
 
-If you update these libraries, please also update this file (version numbers + hashes) and retain the complete license texts.
+- Electron — MIT License — https://www.electronjs.org/ (source: https://github.com/electron/electron)
+- electron‑updater — MIT License — https://github.com/electron-userland/electron-builder/tree/master/packages/electron-updater
+- electron‑log — MIT License — https://github.com/megahertz/electron-log
 
----
-## MIT License (ExcelJS)
-(The following is the MIT License text from the ExcelJS project; confirm exact header after copying the authentic distribution.)
+Distribution notes
+- Include this file with distributed binaries (installers, portable, AppImage, DMG/ZIP, NSIS).
+- The upstream projects above provide complete license texts in their repositories. If required by your distribution policies, bundle those license files as well.
 
-```
-MIT License
+No vendor JS bundles
+- The app does not currently bundle third‑party JavaScript libraries in `docs/`. If libraries are added later, list them here with name, license, and upstream URL.
 
-Copyright (c) 2014-present ExcelJS
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-## MIT License (FileSaver.js)
-(The following is the MIT License text from the FileSaver.js project; confirm exact header after copying the authentic distribution.)
-
-```
-The MIT License (MIT)
-
-Copyright (c) 2016 Eli Grey
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-## Hashes (Fill After Replacing Placeholders)
-Add SHA256 checksums after copying authentic builds:
-```
-exceljs.min.js  SHA256: <pending>
-file-saver.min.js  SHA256: <pending>
-```
-
----
-## Attribution Reminder
-When distributing binaries (e.g., Electron installers), bundle:
-- `LICENSE` (AGPL-3.0)
-- `THIRD-PARTY-LICENSES.md`
-- `README.md`
-
-Provide a link in the application UI (footer or About dialog) to this file for transparency.
-
----
-End of file.
+— End of file —
