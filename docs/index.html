@@ -1777,7 +1777,7 @@ async function renderDocument(xmlDoc){
     if(rendered){
       area.appendChild(rendered);
       // Wire note tooltips after chart content is in the DOM
-      if(window.wireNoteTooltips){ try{ window.wireNoteTooltips(); }catch(_){} }
+      if(window.wireNoteTooltips){ try{ window.wireNoteTooltips(); }catch(e){ console.error('Error wiring note tooltips:', e); } }
       // Enable column resizing on the text chart table
       enableTextChartColumnResize(area);
   // Wire Free Translation add/edit buttons and apply current display mode
@@ -2644,7 +2644,7 @@ function buildStandaloneHTML(opts){
   const prologueNode = render.querySelector(':scope > .chart-prologue');
   const clone = render.cloneNode(true);
   // Remove in-app only controls from export snapshot
-  try{ clone.querySelectorAll('.add-trans-btn').forEach(n=> n.remove()); }catch(_){ }
+  try{ clone.querySelectorAll('.add-trans-btn').forEach(n=> n.remove()); }catch(e){ console.error('Error removing .add-trans-btn:', e); }
   // Helper: ensure destination table has individual <col> elements (no span)
   function ensureIndividualCols(tbl){
     const groups = Array.from(tbl.querySelectorAll('colgroup'));
@@ -2790,7 +2790,7 @@ function buildStandaloneHTML(opts){
     if(st.color) vars.push(`--ft-inline-color: ${st.color}`);
     if(st.bg) vars.push(`--ft-inline-bg: ${st.bg}`);
     if(vars.length){ ftVarsCSS = `:root{ ${vars.join('; ')}; }`; }
-  }catch(_){ /* ignore */ }
+  }catch(e){ console.error(e); }
   // Add minimal sticky header CSS to ensure freeze works even if outer CSS is pruned
   const stickyCSS = `
   .chartshell.freeze-headers thead tr.row.title1 th,
@@ -3042,7 +3042,7 @@ ${content}
         } else {
           fallbackDownload(html, filename);
         }
-      }catch(_){ /* ignore */ }
+      }catch(e){ console.warn('Error applying FT inline style variables:', e); }
     }
     function fallbackDownload(html, filename){
       var blob = new Blob([html], {type:'text/html'});
@@ -3263,13 +3263,13 @@ function computeRowLabelFromRow(tr){
     const rn = tr?.querySelector('td .interlinear .pair .w.rownum');
     const t = rn?.textContent?.trim();
     if(t) return t;
-  }catch(_){}
+  }catch(e){ console.error('Error computing row label from row:', e); }
   // fallback: sequence number among body rows (1-based)
   try{
     const all = Array.from(tr.parentElement?.querySelectorAll(':scope > tr') || []).filter(r=> !r.classList.contains('title1') && !r.classList.contains('title2') && !r.classList.contains('ft-inline'));
     const idx = all.indexOf(tr);
     return String(idx + 1);
-  }catch(_){ return ''; }
+  }catch(e){ console.error('Error in computeRowLabelFromRow:', e); return ''; }
 }
 function computeTotalColumns(tbl){
   const colCount = tbl.querySelectorAll('colgroup col').length;
