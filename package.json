@@ -1,6 +1,6 @@
 {
   "name": "flexml_display",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "FLExText Discourse Analysis Tool (and XML Exporter).",
   "repository": {
     "type": "git",
