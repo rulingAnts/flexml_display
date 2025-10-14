@@ -643,6 +643,99 @@ const ABBREV_PREFS_KEY = 'flex_textchart_abbrevs_v1';
 const LISTREF_PREFS_KEY = 'flex_textchart_listrefs_v2';
 const FT_PREFS_KEY = 'flex_textchart_free_trans_prefs_v1';
 const SALIENCE_PREFS_KEY = 'flex_textchart_salience_bands_v1';
+const ROW_GUIDS_KEY = 'flex_textchart_row_guids_v1';
+const TOKEN_GUIDS_KEY = 'flex_textchart_token_guids_v1';
+const NOTE_GUIDS_KEY = 'flex_textchart_note_guids_v1';
+
+// GUID utilities
+function newGuid(){
+  // RFC4122-ish random GUID (not cryptographically strong, sufficient for client persistence)
+  const s = () => Math.floor((1+Math.random())*0x10000).toString(16).slice(1);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c=>{
+    const r = Math.random()*16|0, v = c==='x'? r : (r&0x3|0x8); return v.toString(16);
+  });
+}
+function loadRowGuidMap(){ return loadJSON(ROW_GUIDS_KEY) || { byIdx:{}, byLabel:{} }; }
+function saveRowGuidMap(map){ saveJSON(ROW_GUIDS_KEY, map); }
+function getOrAssignRowGuid(tr){
+  try{
+    const idxAttr = tr.getAttribute('data-row-idx');
+    const label = computeRowLabelFromRow(tr);
+    const map = loadRowGuidMap();
+    const idx = idxAttr ? String(idxAttr) : '';
+    let guid = '';
+    // Prefer existing mapping by idx; fallback to label if present
+    if(idx && map.byIdx[idx]) guid = map.byIdx[idx];
+    else if(label && map.byLabel[label]) guid = map.byLabel[label];
+    if(!guid){ guid = newGuid(); }
+    // Update both indices for robustness over time
+    if(idx) map.byIdx[idx] = guid;
+    if(label) map.byLabel[label] = guid;
+    saveRowGuidMap(map);
+    // Reflect on DOM for faster access
+    tr.setAttribute('data-row-guid', guid);
+    return guid;
+  }catch(_){ return ''; }
+}
+function getRowGuidFromTr(tr){ return tr.getAttribute('data-row-guid') || getOrAssignRowGuid(tr); }
+function getRowGuidByLabel(label){ const map = loadRowGuidMap(); return (map.byLabel||{})[label] || ''; }
+function getRowGuidByIndex(idx){ const map = loadRowGuidMap(); return (map.byIdx||{})[String(idx)] || ''; }
+
+// Token GUID registry: key shape `${rowIdx}:${kind}:${pos}` → guid
+function loadTokenGuidMap(){ return loadJSON(TOKEN_GUIDS_KEY) || { byKey:{} }; }
+function saveTokenGuidMap(map){ saveJSON(TOKEN_GUIDS_KEY, map); }
+function tokenKindFromPair(pair){
+  const cls = pair.className || '';
+  if(/\blistRef\b/.test(cls)) return 'listRef';
+  if(/\bclauseMkr\b/.test(cls)) return 'clauseMkr';
+  if(/\brownum\b/.test(cls)) return 'rownum';
+  if(/\bnote\b/.test(cls)) return 'note';
+  if(/\bpunct-open\b/.test(cls)) return 'punctOpen';
+  if(/\bpunct-close\b/.test(cls)) return 'punctClose';
+  return 'token';
+}
+function assignTokenGuids(area){
+  const tbl = area?.querySelector('table.chartshell'); if(!tbl) return;
+  const map = loadTokenGuidMap(); const byKey = map.byKey || {}; let updated = false;
+  const rows = Array.from(tbl.querySelectorAll('tbody tr')).filter(r=> !r.classList.contains('title1') && !r.classList.contains('title2') && !r.classList.contains('ft-inline'));
+  rows.forEach(r=>{
+    const rowIdx = r.getAttribute('data-row-idx') || '';
+    // Walk tokens in row order
+    const pairs = Array.from(r.querySelectorAll('.interlinear .pair'));
+    pairs.forEach((pair, i)=>{
+      const kind = tokenKindFromPair(pair);
+      const key = `${rowIdx}:${kind}:${i+1}`;
+      let guid = byKey[key];
+      if(!guid){ guid = newGuid(); byKey[key] = guid; updated = true; }
+      pair.setAttribute('data-token-guid', guid);
+      pair.setAttribute('data-token-key', key);
+    });
+  });
+  if(updated){ saveTokenGuidMap({ byKey }); }
+}
+
+// Note GUID registry: byRowGuid → noteGuid (for endnotes mode)
+function loadNoteGuidMap(){ return loadJSON(NOTE_GUIDS_KEY) || { byRowGuid:{} }; }
+function saveNoteGuidMap(map){ saveJSON(NOTE_GUIDS_KEY, map); }
+function assignNoteGuids(area){
+  const tbl = area?.querySelector('table.chartshell'); if(!tbl) return;
+  const noteLinks = Array.from(tbl.querySelectorAll('a.note-link'));
+  if(!noteLinks.length) return; // only in endnotes mode
+  const map = loadNoteGuidMap(); const byRowGuid = map.byRowGuid || {}; let updated = false;
+  noteLinks.forEach(a=>{
+    const tr = a.closest('tr'); if(!tr) return;
+    const rowGuid = getOrAssignRowGuid(tr); if(!rowGuid) return;
+    let ng = byRowGuid[rowGuid]; if(!ng){ ng = newGuid(); byRowGuid[rowGuid] = ng; updated = true; }
+    a.setAttribute('data-note-guid', ng);
+    const href = a.getAttribute('href') || '';
+    if(href.startsWith('#')){
+      const id = href.slice(1);
+      const endnote = document.getElementById(id);
+      if(endnote) endnote.setAttribute('data-note-guid', ng);
+    }
+  });
+  if(updated){ saveNoteGuidMap({ byRowGuid }); }
+}
 
 // { mode: 'tooltip'|'inline', items: { [rowLabel:string]: string }, style: { fontSize?:string, color?:string, bg?:string } }
 function loadFTPrefs(){ const d = loadJSON(FT_PREFS_KEY) || {}; return { mode: d.mode || 'tooltip', items: d.items || {}, style: d.style || {} }; }
@@ -762,6 +855,9 @@ function collectAllSettings(){
     LISTREF_PREFS_KEY,
     FT_PREFS_KEY,
     SALIENCE_PREFS_KEY,
+    ROW_GUIDS_KEY,
+    TOKEN_GUIDS_KEY,
+    NOTE_GUIDS_KEY,
     COLLAPSE_STATE_KEY
   ];
   const out = {};
@@ -1828,6 +1924,16 @@ async function renderDocument(xmlDoc){
     wireCollapsible('listRefPanel','listRefHeader');
     if(rendered){
       area.appendChild(rendered);
+      // Assign persistent GUIDs to body rows for stable associations
+      try{
+        const tbl = area.querySelector('table.chartshell');
+        if(tbl){
+          Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{
+            if(tr.classList.contains('title1') || tr.classList.contains('title2') || tr.classList.contains('ft-inline')) return;
+            getOrAssignRowGuid(tr);
+          });
+        }
+      }catch(_){ }
       // Wire note tooltips after chart content is in the DOM
       if(window.wireNoteTooltips){ try{ window.wireNoteTooltips(); }catch(e){ console.error('Error wiring note tooltips:', e); } }
       // Enable column resizing on the text chart table
@@ -1943,6 +2049,21 @@ function renderSalienceLegend(){
   const prologue = area.querySelector(':scope > .chart-prologue');
   if(prologue && prologue.nextSibling) area.insertBefore(legend, prologue.nextSibling);
   else area.insertBefore(legend, area.firstChild || null);
+}
+// Centralized visual refresh for salience after any change
+function refreshSalienceVisuals(area){
+  try{
+    area = area || byId('renderArea');
+    if(!area) return;
+    // Apply row shading and ensure column content matches current prefs
+    applySalienceBandsToArea(area);
+    // Ensure salience column visibility and cells reflect the latest labels/colors
+    toggleSalienceColumn();
+    // Refresh the per-row picker button text and titles
+    updateSalienceButtons(area);
+    // Rebuild the legend
+    renderSalienceLegend();
+  }catch(_){ /* non-fatal */ }
 }
 function alphaColor(hex, a){
   try{
@@ -3432,16 +3553,17 @@ function wireFreeTranslationButtons(area){
     const firstCell = tr.querySelector('td'); if(!firstCell) return;
     const rownumSpan = firstCell.querySelector('.interlinear .pair .w.rownum');
     if(!rownumSpan) return;
-    const label = computeRowLabelFromRow(tr);
+  const label = computeRowLabelFromRow(tr);
     const btn = document.createElement('button');
     btn.type='button'; btn.className='add-trans-btn'; btn.textContent = items[label] ? 'Edit trans…' : 'Add trans…';
     btn.title = 'Add or edit free translation for this row';
     btn.addEventListener('click', async ()=>{
-      const current = (loadFTPrefs().items||{})[label] || '';
+  const pcur = loadFTPrefs();
+  const current = (pcur.items||{})[label] || '';
       const next = await showFTEditor('Free translation — row ' + label, current);
       if(next === null) return; // cancelled
-      const p = loadFTPrefs(); p.items = p.items || {}; const val = (next||'').trim();
-      if(val) p.items[label] = val; else delete p.items[label];
+  const p = loadFTPrefs(); p.items = p.items || {}; const val = (next||'').trim();
+  if(val){ p.items[label] = val; } else { delete p.items[label]; }
       saveFTPrefs(p);
       btn.textContent = (val ? 'Edit trans…' : 'Add trans…');
       applyFreeTranslationsToArea(area);
@@ -3498,8 +3620,10 @@ function applyFT_TooltipMode(area, tbl, items){
   // Build section before Notes
   const wrap = document.createElement('div'); wrap.className='chart-freetrans';
   const h = document.createElement('h3'); h.textContent='Free translations'; wrap.appendChild(h);
-  Object.keys(items).sort((a,b)=>{ const na=Number(a), nb=Number(b); if(!isNaN(na)&&!isNaN(nb)) return na-nb; return String(a).localeCompare(String(b)); }).forEach(label=>{
-    const text = items[label]; if(!text) return;
+  // Render FT items in row order by scanning rows and using GUID lookup
+  const rowOrder = Array.from(tbl.querySelectorAll('tbody tr')).filter(r=> !r.classList.contains('title1') && !r.classList.contains('title2') && !r.classList.contains('ft-inline'));
+  rowOrder.forEach(tr=>{
+    const label = computeRowLabelFromRow(tr); const text = items[label]; if(!text) return;
     const item = document.createElement('div'); item.className='ft-item'; item.id = 'ft-' + label;
     const lab = document.createElement('div'); lab.className='ft-label';
     const back = document.createElement('a'); back.href = '#row-' + label + '-ftsrc'; back.textContent = label; // back to row number
@@ -3581,13 +3705,11 @@ function loadSaliencePrefs(){
     cellOnly: !!d.cellOnly,
     opacity: (typeof d.opacity === 'number') ? d.opacity : 1,
     tree: Array.isArray(d.tree) ? d.tree : [],
+    // assignments: map of rowGuid -> bandId; support legacy label keys and migrate lazily
     assignments: d.assignments || {}
   };
 }
 function saveSaliencePrefs(p){
-  // Purge assignments that point to missing nodes
-  const ids = new Set(); (function collect(nodes){ (nodes||[]).forEach(n=>{ ids.add(n.id); collect(n.children); }); })(p.tree||[]);
-  const a = {}; Object.keys(p.assignments||{}).forEach(k=>{ const id=p.assignments[k]; if(ids.has(id)) a[k]=id; });
   const out = {
     enabled: (typeof p.enabled === 'boolean') ? p.enabled : true,
     showLegend: (typeof p.showLegend === 'boolean') ? p.showLegend : true,
@@ -3595,7 +3717,8 @@ function saveSaliencePrefs(p){
     cellOnly: !!p.cellOnly,
     opacity: (typeof p.opacity === 'number') ? p.opacity : 1,
     tree: Array.isArray(p.tree)?p.tree:[],
-    assignments: a
+    // Keep assignments as-is; explicit delete flows (e.g., removeNode) will clean up invalid IDs
+    assignments: p.assignments || {}
   };
   // Inherit colors: fill missing child colors from nearest ancestor on save
   (function inherit(list, parentColor){
@@ -3633,12 +3756,30 @@ function initSalienceControls(){
   const cellOnlyCb = byId('salienceCellOnly');
   const opacityRange = byId('salienceOpacity');
   let prefs = loadSaliencePrefs();
-  if(enabledCb){ enabledCb.checked = !!prefs.enabled; enabledCb.addEventListener('change', ()=>{ prefs.enabled = !!enabledCb.checked; saveSaliencePrefs(prefs); applySalienceBandsToArea(byId('renderArea')); renderSalienceLegend(); toggleSalienceColumn(); }); }
-  if(legendCb){ legendCb.checked = !!prefs.showLegend; legendCb.addEventListener('change', ()=>{ prefs.showLegend = !!legendCb.checked; saveSaliencePrefs(prefs); renderSalienceLegend(); }); }
-  if(colCb){ colCb.checked = !!prefs.showColumn; colCb.addEventListener('change', ()=>{ prefs.showColumn = !!colCb.checked; saveSaliencePrefs(prefs); toggleSalienceColumn(); }); }
-  if(cellOnlyCb){ cellOnlyCb.checked = !!prefs.cellOnly; cellOnlyCb.addEventListener('change', ()=>{ prefs.cellOnly = !!cellOnlyCb.checked; saveSaliencePrefs(prefs); applySalienceBandsToArea(byId('renderArea')); }); }
-  if(opacityRange){ opacityRange.value = String((typeof prefs.opacity==='number'?prefs.opacity:1)); opacityRange.addEventListener('input', ()=>{ prefs.opacity = Number(opacityRange.value); saveSaliencePrefs(prefs); applySalienceBandsToArea(byId('renderArea')); renderSalienceLegend(); }); }
-  function persist(){ saveSaliencePrefs(prefs); applySalienceBandsToArea(byId('renderArea')); updateSalienceButtons(byId('renderArea')); }
+  if(enabledCb){ enabledCb.checked = !!prefs.enabled; enabledCb.addEventListener('change', ()=>{ prefs.enabled = !!enabledCb.checked; persist(); }); }
+  if(legendCb){ legendCb.checked = !!prefs.showLegend; legendCb.addEventListener('change', ()=>{ prefs.showLegend = !!legendCb.checked; persist(); }); }
+  if(colCb){ colCb.checked = !!prefs.showColumn; colCb.addEventListener('change', ()=>{ prefs.showColumn = !!colCb.checked; persist(); }); }
+  if(cellOnlyCb){ cellOnlyCb.checked = !!prefs.cellOnly; cellOnlyCb.addEventListener('change', ()=>{ prefs.cellOnly = !!cellOnlyCb.checked; persist(); }); }
+  if(opacityRange){ opacityRange.value = String((typeof prefs.opacity==='number'?prefs.opacity:1)); opacityRange.addEventListener('input', ()=>{ prefs.opacity = Number(opacityRange.value); persist(); }); }
+  function persist(options){
+    const mergeAssignments = !options || options.mergeAssignments !== false;
+    if(mergeAssignments){
+      try{
+        const latest = loadSaliencePrefs();
+        // Union storage and in-memory assignments to avoid clobbering recent row picks
+        const curA = prefs.assignments || {};
+        const latA = (latest && latest.assignments) || {};
+        prefs.assignments = Object.assign({}, latA, curA);
+        // Ensure tree is at least defined to avoid accidental pruning when an empty object is saved from elsewhere
+        if(!Array.isArray(prefs.tree)){
+          if(Array.isArray(latest.tree)) prefs.tree = latest.tree;
+          else prefs.tree = [];
+        }
+      }catch(_){ /* ignore */ }
+    }
+    saveSaliencePrefs(prefs);
+    refreshSalienceVisuals(byId('renderArea'));
+  }
   function removeNode(id){
     function rec(list){
       const idx = list.findIndex(x=> x.id===id);
@@ -3678,16 +3819,16 @@ function initSalienceControls(){
       const ul = document.createElement('ul'); ul.className='salience-tree'; if(level>0) ul.style.marginLeft = (level*16) + 'px';
       (list||[]).forEach((n)=>{
         const li = document.createElement('li'); li.className='sal-item';
-        const num = document.createElement('span'); num.className='sal-num'; num.textContent = nums[n.id] || '';
-  const color = document.createElement('input'); color.type='color'; color.value = n.color || (level>0 ? (findParentColor(prefs.tree, n.id)||'#fffad1') : '#fffad1'); color.title='Row background'; color.addEventListener('input', ()=>{ n.color=color.value; persist(); /* live update */ });
+    const num = document.createElement('span'); num.className='sal-num'; num.textContent = nums[n.id] || '';
+  const color = document.createElement('input'); color.type='color'; color.value = n.color || (level>0 ? (findParentColor(prefs.tree, n.id)||'#fffad1') : '#fffad1'); color.title='Row background'; color.addEventListener('input', ()=>{ n.color=color.value; persist(); /* ensure all visuals sync immediately */ refreshSalienceVisuals(byId('renderArea')); });
         const colorSw = document.createElement('span'); colorSw.className='sal-color'; colorSw.style.background = color.value; color.addEventListener('input', ()=>{ colorSw.style.background=color.value; });
-        const label = document.createElement('input'); label.type='text'; label.value = n.label || ''; label.placeholder='Label (e.g., secondary event line)'; label.addEventListener('input', ()=>{ n.label = label.value; persist(); updateSalienceButtons(byId('renderArea')); });
+  const label = document.createElement('input'); label.type='text'; label.value = n.label || ''; label.placeholder='Label (e.g., secondary event line)'; label.addEventListener('input', ()=>{ n.label = label.value; persist(); refreshSalienceVisuals(byId('renderArea')); });
         const up = document.createElement('button'); up.className='sal-btn'; up.title='Move up'; up.textContent='↑'; up.addEventListener('click', ()=> moveUp(n.id));
         const down = document.createElement('button'); down.className='sal-btn'; down.title='Move down'; down.textContent='↓'; down.addEventListener('click', ()=> moveDown(n.id));
         const prom = document.createElement('button'); prom.className='sal-btn'; prom.title='Promote (outdent)'; prom.textContent='←'; prom.addEventListener('click', ()=> promote(n.id));
         const demo = document.createElement('button'); demo.className='sal-btn'; demo.title='Demote (indent)'; demo.textContent='→'; demo.addEventListener('click', ()=> demote(n.id));
         const add = document.createElement('button'); add.className='sal-btn'; add.title='Add sub-band'; add.textContent='＋'; add.addEventListener('click', ()=> addChild(n.id));
-        const del = document.createElement('button'); del.className='sal-btn'; del.title='Delete band'; del.textContent='🗑'; del.addEventListener('click', ()=>{ if(confirm('Delete this band and any sub-bands?')){ removeNode(n.id); persist(); render(); } });
+  const del = document.createElement('button'); del.className='sal-btn'; del.title='Delete band'; del.textContent='🗑'; del.addEventListener('click', ()=>{ if(confirm('Delete this band and any sub-bands?')){ removeNode(n.id); persist({ mergeAssignments: false }); render(); } });
         li.appendChild(num); li.appendChild(colorSw); li.appendChild(color); li.appendChild(label); li.appendChild(up); li.appendChild(down); li.appendChild(prom); li.appendChild(demo); li.appendChild(add); li.appendChild(del);
         ul.appendChild(li);
         if(n.children && n.children.length){ ul.appendChild(renderList(n.children, level+1)); }
@@ -3697,7 +3838,7 @@ function initSalienceControls(){
     listHost.appendChild(renderList(prefs.tree, 0));
   }
   if(addRootBtn){ addRootBtn.onclick = ()=>{ prefs.tree.push(newSalNode('Band')); persist(); render(); }; }
-  if(clearAssignBtn){ clearAssignBtn.onclick = ()=>{ if(confirm('Clear all row salience assignments?')){ prefs.assignments = {}; persist(); render(); } }; }
+  if(clearAssignBtn){ clearAssignBtn.onclick = ()=>{ if(confirm('Clear all row salience assignments?')){ prefs.assignments = {}; persist({ mergeAssignments: false }); render(); } }; }
   // First render
   render();
 }
@@ -3743,7 +3884,8 @@ function wireSalienceButtons(area){
     const rowLabel = computeRowLabelFromRow(tr);
     const btn = document.createElement('button'); btn.type='button'; btn.className='add-band-btn';
     function setBtnText(){
-      const id = (loadSaliencePrefs().assignments||{})[rowLabel];
+      const a = (loadSaliencePrefs().assignments||{});
+      const id = a[rowLabel];
       if(!id){ btn.textContent = 'Salience band…'; btn.title='Assign a salience band to this row'; }
       else {
         const opts = buildSalienceOptions(); const x = opts.find(o=>o.id===id);
@@ -3753,7 +3895,7 @@ function wireSalienceButtons(area){
     }
     setBtnText();
     btn.addEventListener('click', async ()=>{
-      const prefs = loadSaliencePrefs(); const current = (prefs.assignments||{})[rowLabel] || '';
+  const prefs = loadSaliencePrefs(); const a = prefs.assignments||{}; const current = a[rowLabel] ?? '';
       const hasBands = (buildSalienceOptions().length > 0);
       if(!hasBands){
         if(confirm('No salience bands defined yet. Open Salience Bands panel to add one?')){
@@ -3765,11 +3907,12 @@ function wireSalienceButtons(area){
       }
       const sel = await showSaliencePicker('Salience band — row '+rowLabel, current);
       if(sel === null) return; // cancelled
-      const p = loadSaliencePrefs(); p.assignments = p.assignments || {};
-      if(sel) p.assignments[rowLabel] = sel; else delete p.assignments[rowLabel];
+  const p = loadSaliencePrefs(); p.assignments = p.assignments || {};
+  if(sel){ p.assignments[rowLabel] = sel; }
+  else { delete p.assignments[rowLabel]; }
       saveSaliencePrefs(p);
       setBtnText();
-      applySalienceBandsToArea(area);
+      refreshSalienceVisuals(area);
     });
     rownumSpan.parentElement?.appendChild(btn);
   });
@@ -3782,7 +3925,7 @@ function updateSalienceButtons(area){
     const rownumSpan = firstCell.querySelector('.interlinear .pair .w.rownum'); if(!rownumSpan) return;
     const rowLabel = computeRowLabelFromRow(tr);
     const btn = rownumSpan.parentElement?.querySelector('.add-band-btn'); if(!btn) return;
-    const id = (loadSaliencePrefs().assignments||{})[rowLabel];
+    const a = (loadSaliencePrefs().assignments||{}); const id = a[rowLabel];
     if(!id){ btn.textContent='Salience band…'; btn.title='Assign a salience band to this row'; }
     else { const opts = buildSalienceOptions(); const x = opts.find(o=>o.id===id); const num = x?x.number:''; const lab=x?x.label:''; btn.textContent = num?`Band ${num}`:'Band'; btn.title = lab||'Assigned band'; }
   });
@@ -3799,11 +3942,12 @@ function applySalienceBandsToArea(area){
   if(!prefs.enabled){ return; }
   const idToColor = {}; (function walk(list){ (list||[]).forEach(n=>{ idToColor[n.id]=n.color||'#fffad1'; walk(n.children||[]); }); })(prefs.tree||[]);
   // Apply
-  Object.keys(prefs.assignments||{}).forEach(label=>{
-    const id = prefs.assignments[label]; const color = idToColor[id]; if(!color) return;
-    // Find row by label
-    const rows = Array.from(tbl.querySelectorAll('tbody tr')).filter(r=> !r.classList.contains('title1') && !r.classList.contains('title2') && !r.classList.contains('ft-inline'));
-    const tr = rows.find(r=> computeRowLabelFromRow(r) === label);
+  // Apply assignments by scanning rows to resolve GUIDs on the fly
+  const rows = Array.from(tbl.querySelectorAll('tbody tr')).filter(r=> !r.classList.contains('title1') && !r.classList.contains('title2') && !r.classList.contains('ft-inline'));
+  rows.forEach(tr=>{
+    const label = computeRowLabelFromRow(tr);
+    const bandId = prefs.assignments[label];
+    const color = bandId ? idToColor[bandId] : null; if(!color) return;
     if(!tr) return;
     const bg = alphaColor(color, prefs.opacity);
     if(prefs.cellOnly){
