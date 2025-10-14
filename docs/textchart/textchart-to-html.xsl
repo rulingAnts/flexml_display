@@ -348,6 +348,12 @@
       <xsl:attribute name="class">
         <xsl:value-of select="concat($rclass, $extra)"/>
       </xsl:attribute>
+      <!-- Stable 1-based index for non-title rows to aid host app GUID mapping -->
+      <xsl:if test="not(@type='title1' or @type='title2')">
+        <xsl:attribute name="data-row-idx">
+          <xsl:value-of select="count(preceding-sibling::row[not(@type='title1' or @type='title2')]) + 1"/>
+        </xsl:attribute>
+      </xsl:if>
       <xsl:apply-templates select="cell"/>
     </tr>
   </xsl:template>

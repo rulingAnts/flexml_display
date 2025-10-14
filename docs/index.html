@@ -57,6 +57,9 @@
   /* Free translations UI (viewer) */
   .add-trans-btn{ margin-left:6px; font-size:0.75rem; padding:2px 6px; border:1px solid #e0e0e0; background:#fff; color:#333; border-radius:6px; cursor:pointer }
   .add-trans-btn:hover{ background:#f6f8ff; border-color:#cfe0ff }
+  /* Salience band row button */
+  .add-band-btn{ margin-left:6px; font-size:0.75rem; padding:2px 6px; border:1px solid #e0e0e0; background:#fff; color:#333; border-radius:6px; cursor:pointer }
+  .add-band-btn:hover{ background:#f6f8ff; border-color:#cfe0ff }
   /* Inline free translation row */
   .ft-inline{ background:#fbfcff }
   .ft-inline td{ color: var(--ft-inline-color, #333); font-size: var(--ft-inline-font-size, 0.95rem); background: var(--ft-inline-bg, #fbfcff); padding-top:6px; padding-bottom:6px; border-top:0 }
@@ -157,6 +160,24 @@
   footer{margin-top:28px;padding-top:10px;border-top:1px solid #e6e6e6;color:var(--muted);font-size:0.9rem}
   /* Endnotes container tweaks */
   .chart-endnotes{border:1px solid #eee;padding:8px 10px;border-radius:6px;background:linear-gradient(#fff,#fcfcff);margin:12px 0}
+  /* Salience Bands panel styles */
+  .salience-tree{ list-style:none; margin:6px 0; padding-left:0 }
+  .sal-item{ display:flex; align-items:center; gap:8px; margin:4px 0 }
+  .sal-indent{ width: var(--sal-indent, 0px); flex:0 0 auto }
+  .sal-num{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; font-weight:600; min-width:44px }
+  .sal-color{ width:16px; height:16px; border-radius:4px; border:1px solid #ddd; display:inline-block }
+  .salience-controls{ display:flex; align-items:center; gap:6px; flex-wrap:wrap }
+  .salience-controls input[type="text"]{ padding:4px 6px; border:1px solid #e5e5e5; border-radius:6px; min-width:160px }
+  .salience-controls input[type="color"]{ padding:0; border:1px solid #e5e5e5; border-radius:6px; width:36px; height:28px }
+  .sal-btn{ background:#fff; border:1px solid #e0e0e0; padding:4px 6px; border-radius:6px; cursor:pointer }
+  .sal-btn:hover{ background:#f6f8ff; border-color:#cfe0ff }
+  /* Salience column and legend */
+  .sal-cell{ white-space:nowrap; font-size:0.9rem; border-right:1px solid #eee; padding:4px 6px; min-width:8ch }
+  .sal-pill{ display:inline-block; padding:1px 6px; border-radius:999px; border:1px solid #e0e0e0; background:#fff; color:#333; font-size:0.85rem }
+  .chart-salience-legend{ border:1px solid #eee; padding:8px 10px; border-radius:6px; background:linear-gradient(#fff,#fafdff); margin:10px 0 }
+  .chart-salience-legend h3{ margin:0 0 6px 0; font-size:1rem }
+  .chart-salience-legend .sal-row{ display:flex; align-items:center; gap:10px; padding:4px 0; border-top:1px solid #f3f3f3 }
+  .chart-salience-legend .sal-row:first-of-type{ border-top:none }
   @media print {
     .chart-endnotes { break-before: page; page-break-before: always; }
   }
@@ -442,6 +463,29 @@
   </div>
   </div>
 
+  <!-- Salience Bands (row color coding) -->
+  <div id="saliencePanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
+    <div class="collapsible-header" id="salienceHeader">
+      <span class="small-muted">Salience Bands (row color coding)</span>
+      <span class="chev">▸</span>
+    </div>
+    <div class="collapsible-body">
+      <div class="small-muted" style="margin-bottom:8px">Create a nested outline of bands. Each band has an automatic number (e.g., 1, 1.1, 1.1.2), a label, and a color. Assign a band to rows from the chart using the “Salience band…” button next to the row number.</div>
+      <div class="controls-inline" style="margin:6px 0 10px 0">
+        <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceEnabled" type="checkbox" checked> Show salience band colors</label>
+        <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceShowLegend" type="checkbox" checked> Show legend</label>
+        <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceShowColumn" type="checkbox"> Show salience column</label>
+        <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceCellOnly" type="checkbox"> Limit color to salience cell only</label>
+        <label class="small-muted" title="0 = transparent, 1 = full color" style="display:flex; align-items:center; gap:8px">Opacity <input id="salienceOpacity" type="range" min="0" max="1" step="0.05" value="1" style="width:160px"></label>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px">
+        <button id="salAddRoot" class="small-btn">Add band</button>
+        <button id="salClearAssignments" class="small-btn secondary" title="Clear band assignments for all rows">Clear all row assignments</button>
+      </div>
+      <div id="salienceList"></div>
+    </div>
+  </div>
+
   <!-- Notes column options -->
   <div id="notesPanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
     <div class="collapsible-header" id="notesHeader">
@@ -598,6 +642,100 @@ const FREEZE_HEADERS_KEY = 'flex_textchart_freeze_headers_v1';
 const ABBREV_PREFS_KEY = 'flex_textchart_abbrevs_v1';
 const LISTREF_PREFS_KEY = 'flex_textchart_listrefs_v2';
 const FT_PREFS_KEY = 'flex_textchart_free_trans_prefs_v1';
+const SALIENCE_PREFS_KEY = 'flex_textchart_salience_bands_v1';
+const ROW_GUIDS_KEY = 'flex_textchart_row_guids_v1';
+const TOKEN_GUIDS_KEY = 'flex_textchart_token_guids_v1';
+const NOTE_GUIDS_KEY = 'flex_textchart_note_guids_v1';
+
+// GUID utilities
+function newGuid(){
+  // RFC4122-ish random GUID (not cryptographically strong, sufficient for client persistence)
+  const s = () => Math.floor((1+Math.random())*0x10000).toString(16).slice(1);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c=>{
+    const r = Math.random()*16|0, v = c==='x'? r : (r&0x3|0x8); return v.toString(16);
+  });
+}
+function loadRowGuidMap(){ return loadJSON(ROW_GUIDS_KEY) || { byIdx:{}, byLabel:{} }; }
+function saveRowGuidMap(map){ saveJSON(ROW_GUIDS_KEY, map); }
+function getOrAssignRowGuid(tr){
+  try{
+    const idxAttr = tr.getAttribute('data-row-idx');
+    const label = computeRowLabelFromRow(tr);
+    const map = loadRowGuidMap();
+    const idx = idxAttr ? String(idxAttr) : '';
+    let guid = '';
+    // Prefer existing mapping by idx; fallback to label if present
+    if(idx && map.byIdx[idx]) guid = map.byIdx[idx];
+    else if(label && map.byLabel[label]) guid = map.byLabel[label];
+    if(!guid){ guid = newGuid(); }
+    // Update both indices for robustness over time
+    if(idx) map.byIdx[idx] = guid;
+    if(label) map.byLabel[label] = guid;
+    saveRowGuidMap(map);
+    // Reflect on DOM for faster access
+    tr.setAttribute('data-row-guid', guid);
+    return guid;
+  }catch(_){ return ''; }
+}
+function getRowGuidFromTr(tr){ return tr.getAttribute('data-row-guid') || getOrAssignRowGuid(tr); }
+function getRowGuidByLabel(label){ const map = loadRowGuidMap(); return (map.byLabel||{})[label] || ''; }
+function getRowGuidByIndex(idx){ const map = loadRowGuidMap(); return (map.byIdx||{})[String(idx)] || ''; }
+
+// Token GUID registry: key shape `${rowIdx}:${kind}:${pos}` → guid
+function loadTokenGuidMap(){ return loadJSON(TOKEN_GUIDS_KEY) || { byKey:{} }; }
+function saveTokenGuidMap(map){ saveJSON(TOKEN_GUIDS_KEY, map); }
+function tokenKindFromPair(pair){
+  const cls = pair.className || '';
+  if(/\blistRef\b/.test(cls)) return 'listRef';
+  if(/\bclauseMkr\b/.test(cls)) return 'clauseMkr';
+  if(/\brownum\b/.test(cls)) return 'rownum';
+  if(/\bnote\b/.test(cls)) return 'note';
+  if(/\bpunct-open\b/.test(cls)) return 'punctOpen';
+  if(/\bpunct-close\b/.test(cls)) return 'punctClose';
+  return 'token';
+}
+function assignTokenGuids(area){
+  const tbl = area?.querySelector('table.chartshell'); if(!tbl) return;
+  const map = loadTokenGuidMap(); const byKey = map.byKey || {}; let updated = false;
+  const rows = Array.from(tbl.querySelectorAll('tbody tr')).filter(r=> !r.classList.contains('title1') && !r.classList.contains('title2') && !r.classList.contains('ft-inline'));
+  rows.forEach(r=>{
+    const rowIdx = r.getAttribute('data-row-idx') || '';
+    // Walk tokens in row order
+    const pairs = Array.from(r.querySelectorAll('.interlinear .pair'));
+    pairs.forEach((pair, i)=>{
+      const kind = tokenKindFromPair(pair);
+      const key = `${rowIdx}:${kind}:${i+1}`;
+      let guid = byKey[key];
+      if(!guid){ guid = newGuid(); byKey[key] = guid; updated = true; }
+      pair.setAttribute('data-token-guid', guid);
+      pair.setAttribute('data-token-key', key);
+    });
+  });
+  if(updated){ saveTokenGuidMap({ byKey }); }
+}
+
+// Note GUID registry: byRowGuid → noteGuid (for endnotes mode)
+function loadNoteGuidMap(){ return loadJSON(NOTE_GUIDS_KEY) || { byRowGuid:{} }; }
+function saveNoteGuidMap(map){ saveJSON(NOTE_GUIDS_KEY, map); }
+function assignNoteGuids(area){
+  const tbl = area?.querySelector('table.chartshell'); if(!tbl) return;
+  const noteLinks = Array.from(tbl.querySelectorAll('a.note-link'));
+  if(!noteLinks.length) return; // only in endnotes mode
+  const map = loadNoteGuidMap(); const byRowGuid = map.byRowGuid || {}; let updated = false;
+  noteLinks.forEach(a=>{
+    const tr = a.closest('tr'); if(!tr) return;
+    const rowGuid = getOrAssignRowGuid(tr); if(!rowGuid) return;
+    let ng = byRowGuid[rowGuid]; if(!ng){ ng = newGuid(); byRowGuid[rowGuid] = ng; updated = true; }
+    a.setAttribute('data-note-guid', ng);
+    const href = a.getAttribute('href') || '';
+    if(href.startsWith('#')){
+      const id = href.slice(1);
+      const endnote = document.getElementById(id);
+      if(endnote) endnote.setAttribute('data-note-guid', ng);
+    }
+  });
+  if(updated){ saveNoteGuidMap({ byRowGuid }); }
+}
 
 // { mode: 'tooltip'|'inline', items: { [rowLabel:string]: string }, style: { fontSize?:string, color?:string, bg?:string } }
 function loadFTPrefs(){ const d = loadJSON(FT_PREFS_KEY) || {}; return { mode: d.mode || 'tooltip', items: d.items || {}, style: d.style || {} }; }
@@ -716,6 +854,10 @@ function collectAllSettings(){
     ABBREV_PREFS_KEY,
     LISTREF_PREFS_KEY,
     FT_PREFS_KEY,
+    SALIENCE_PREFS_KEY,
+    ROW_GUIDS_KEY,
+    TOKEN_GUIDS_KEY,
+    NOTE_GUIDS_KEY,
     COLLAPSE_STATE_KEY
   ];
   const out = {};
@@ -1657,6 +1799,8 @@ function applyPrologueToRenderArea(prefs){
   }
   // If both are empty, remove the container to avoid extra spacing
   if(!prologue.childNodes.length){ prologue.remove(); }
+  // After updating prologue, re-render the Salience legend position
+  try{ renderSalienceLegend(); }catch(_){ }
 }
 
 /* ===== Append external HTML before/after the chart ===== */
@@ -1765,6 +1909,10 @@ async function renderDocument(xmlDoc){
   showFTPanel(true);
   wireCollapsible('ftPanel','ftHeader');
   initFTControls();
+  // Salience bands panel
+  showSaliencePanel(true);
+  wireCollapsible('saliencePanel','salienceHeader');
+  initSalienceControls();
     // Scan listRef abbreviations and show Abbrev controls
     globalState.chartAbbrevLabels = collectListRefLabelsFromXml(xmlDoc);
     showAbbrevPanel(true);
@@ -1776,6 +1924,16 @@ async function renderDocument(xmlDoc){
     wireCollapsible('listRefPanel','listRefHeader');
     if(rendered){
       area.appendChild(rendered);
+      // Assign persistent GUIDs to body rows for stable associations
+      try{
+        const tbl = area.querySelector('table.chartshell');
+        if(tbl){
+          Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{
+            if(tr.classList.contains('title1') || tr.classList.contains('title2') || tr.classList.contains('ft-inline')) return;
+            getOrAssignRowGuid(tr);
+          });
+        }
+      }catch(_){ }
       // Wire note tooltips after chart content is in the DOM
       if(window.wireNoteTooltips){ try{ window.wireNoteTooltips(); }catch(e){ console.error('Error wiring note tooltips:', e); } }
       // Enable column resizing on the text chart table
@@ -1783,6 +1941,10 @@ async function renderDocument(xmlDoc){
   // Wire Free Translation add/edit buttons and apply current display mode
   wireFreeTranslationButtons(area);
   applyFreeTranslationsToArea(area);
+  // Wire Salience band buttons and apply to rows
+  wireSalienceButtons(area);
+  applySalienceBandsToArea(area);
+  toggleSalienceColumn();
       // Apply freeze headers if saved and show control
       const fhc = byId('freezeHeadersContainer'); if(fhc) fhc.style.display = 'flex';
       initFreezeHeadersControl();
@@ -1791,6 +1953,8 @@ async function renderDocument(xmlDoc){
       applyAbbrevToRenderArea(globalState.abbrevPrefs || loadAbbrevPrefs());
       // Now insert after-chart HTML in final position
       applyAppendedHtmlToRenderArea();
+  // Insert/refresh salience legend below prologue and above chart
+  renderSalienceLegend();
       wireCollapsible('appendHtmlPanel','appendHeader');
       // Insert Epilogue live preview at end
       applyEpilogueToRenderArea(loadPostloguePrefs());
@@ -1858,6 +2022,104 @@ async function renderDocument(xmlDoc){
   setPrintHeadersEnabled(false);
   showListRefPanel(false);
   showPostloguePanel(false);
+}
+
+/* ===== Salience Legend and Column ===== */
+function renderSalienceLegend(){
+  const area = byId('renderArea'); if(!area) return;
+  // Remove existing legend
+  area.querySelectorAll(':scope > .chart-salience-legend').forEach(n=> n.remove());
+  const prefs = loadSaliencePrefs();
+  if(!(prefs.enabled && prefs.showLegend)) return;
+  // Build flat list from tree
+  const nums = computeSalienceNumbers(prefs.tree);
+  const items = [];
+  (function walk(list){ (list||[]).forEach(n=>{ items.push({ id:n.id, num:nums[n.id]||'', label:n.label||'', color:n.color||findParentColor(prefs.tree, n.id)||'#fffad1' }); walk(n.children||[]); }); })(prefs.tree||[]);
+  if(!items.length) return;
+  const legend = document.createElement('div'); legend.className='chart-salience-legend';
+  const h = document.createElement('h3'); h.textContent = 'Salience Scheme'; legend.appendChild(h);
+  items.forEach(it=>{
+    const row = document.createElement('div'); row.className='sal-row';
+    const sw = document.createElement('span'); sw.className='sal-color'; sw.style.background = alphaColor(it.color, prefs.opacity);
+    const num = document.createElement('strong'); num.textContent = it.num;
+    const lab = document.createElement('span'); lab.textContent = it.label || '(unnamed)';
+    row.appendChild(sw); row.appendChild(num); row.appendChild(lab); legend.appendChild(row);
+  });
+  // Insert after prologue, before chart
+  const prologue = area.querySelector(':scope > .chart-prologue');
+  if(prologue && prologue.nextSibling) area.insertBefore(legend, prologue.nextSibling);
+  else area.insertBefore(legend, area.firstChild || null);
+}
+// Centralized visual refresh for salience after any change
+function refreshSalienceVisuals(area){
+  try{
+    area = area || byId('renderArea');
+    if(!area) return;
+    // Apply row shading and ensure column content matches current prefs
+    applySalienceBandsToArea(area);
+    // Ensure salience column visibility and cells reflect the latest labels/colors
+    toggleSalienceColumn();
+    // Refresh the per-row picker button text and titles
+    updateSalienceButtons(area);
+    // Rebuild the legend
+    renderSalienceLegend();
+  }catch(_){ /* non-fatal */ }
+}
+function alphaColor(hex, a){
+  try{
+    const m = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i.exec((hex||'').trim());
+    if(!m) return hex;
+    let r,g,b; const h=m[1];
+    if(h.length===3){ r=parseInt(h[0]+h[0],16); g=parseInt(h[1]+h[1],16); b=parseInt(h[2]+h[2],16); }
+    else { r=parseInt(h.slice(0,2),16); g=parseInt(h.slice(2,4),16); b=parseInt(h.slice(4,6),16); }
+    const alpha = Math.max(0, Math.min(1, (typeof a==='number'?a:1)));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }catch(_){ return hex; }
+}
+function toggleSalienceColumn(){
+  const area = byId('renderArea'); if(!area) return;
+  const prefs = loadSaliencePrefs();
+  const tbl = area.querySelector('table.chartshell'); if(!tbl) return;
+  const want = !!prefs.showColumn;
+  // Determine if a salience column exists (look for th/td with data-sal-col="1")
+  const has = !!tbl.querySelector('[data-sal-col="1"]');
+  if(want && has){ updateSalienceColumnCells(tbl); return; }
+  if(!want && has){ removeSalienceColumn(tbl); return; }
+  if(want && !has){ addSalienceColumn(tbl); return; }
+}
+function addSalienceColumn(tbl){
+  // Add a leading column in header rows and body rows
+  const headRows = tbl.querySelectorAll('thead tr.row.title1, thead tr.row.title2');
+  headRows.forEach(r=>{
+    const th = document.createElement('th'); th.className='cell sal-cell'; th.textContent = r.classList.contains('title2') ? 'Salience' : '';
+    th.setAttribute('data-sal-col','1');
+    r.insertBefore(th, r.firstChild);
+  });
+  const bodyRows = tbl.querySelectorAll('tbody tr');
+  bodyRows.forEach(r=>{
+    if(r.classList.contains('ft-inline')) return;
+    const td = document.createElement('td'); td.className='sal-cell'; td.setAttribute('data-sal-col','1');
+    r.insertBefore(td, r.firstChild);
+  });
+  // Insert a new col element at the start of each colgroup for consistent widths
+  tbl.querySelectorAll('colgroup').forEach(g=>{ const c = document.createElement('col'); g.insertBefore(c, g.firstChild); });
+  updateSalienceColumnCells(tbl);
+}
+function removeSalienceColumn(tbl){
+  tbl.querySelectorAll('[data-sal-col="1"]').forEach(n=> n.remove());
+}
+function updateSalienceColumnCells(tbl){
+  const prefs = loadSaliencePrefs(); const nums = computeSalienceNumbers(prefs.tree);
+  const idTo = {}; (function walk(list){ (list||[]).forEach(n=>{ idTo[n.id] = { num: nums[n.id]||'', label: n.label||'', color: n.color||findParentColor(prefs.tree, n.id)||'#fffad1' }; walk(n.children||[]); }); })(prefs.tree||[]);
+  const rows = Array.from(tbl.querySelectorAll('tbody tr')).filter(r=> !r.classList.contains('ft-inline'));
+  rows.forEach(r=>{
+    const td = r.querySelector(':scope > td[data-sal-col="1"]'); if(!td) return;
+    const label = computeRowLabelFromRow(r); const id = (prefs.assignments||{})[label];
+    if(!id){ td.textContent = ''; td.style.background=''; return; }
+    const meta = idTo[id]; if(!meta){ td.textContent=''; td.style.background=''; return; }
+    td.innerHTML = `<span class="sal-pill">${meta.num}</span> ${escapeHtml(meta.label)}`;
+    td.style.background = prefs.enabled ? alphaColor(meta.color, prefs.opacity) : '';
+  });
 }
 
 /* ===== Text Chart detection and rendering (XSLT) ===== */
@@ -2644,7 +2906,8 @@ function buildStandaloneHTML(opts){
   const prologueNode = render.querySelector(':scope > .chart-prologue');
   const clone = render.cloneNode(true);
   // Remove in-app only controls from export snapshot
-  try{ clone.querySelectorAll('.add-trans-btn').forEach(n=> n.remove()); }catch(e){ console.error('Error removing .add-trans-btn:', e); }
+  try{ clone.querySelectorAll('.add-trans-btn, .add-band-btn').forEach(n=> n.remove()); }catch(e){ console.error('Error removing in-app buttons:', e); }
+  // Remove interactive wiring attributes if any and re-render legend based on saved prefs post-prologue in export clone (legend already present in clone if rendered)
   // Helper: ensure destination table has individual <col> elements (no span)
   function ensureIndividualCols(tbl){
     const groups = Array.from(tbl.querySelectorAll('colgroup'));
@@ -3290,16 +3553,17 @@ function wireFreeTranslationButtons(area){
     const firstCell = tr.querySelector('td'); if(!firstCell) return;
     const rownumSpan = firstCell.querySelector('.interlinear .pair .w.rownum');
     if(!rownumSpan) return;
-    const label = computeRowLabelFromRow(tr);
+  const label = computeRowLabelFromRow(tr);
     const btn = document.createElement('button');
     btn.type='button'; btn.className='add-trans-btn'; btn.textContent = items[label] ? 'Edit trans…' : 'Add trans…';
     btn.title = 'Add or edit free translation for this row';
     btn.addEventListener('click', async ()=>{
-      const current = (loadFTPrefs().items||{})[label] || '';
+  const pcur = loadFTPrefs();
+  const current = (pcur.items||{})[label] || '';
       const next = await showFTEditor('Free translation — row ' + label, current);
       if(next === null) return; // cancelled
-      const p = loadFTPrefs(); p.items = p.items || {}; const val = (next||'').trim();
-      if(val) p.items[label] = val; else delete p.items[label];
+  const p = loadFTPrefs(); p.items = p.items || {}; const val = (next||'').trim();
+  if(val){ p.items[label] = val; } else { delete p.items[label]; }
       saveFTPrefs(p);
       btn.textContent = (val ? 'Edit trans…' : 'Add trans…');
       applyFreeTranslationsToArea(area);
@@ -3356,8 +3620,10 @@ function applyFT_TooltipMode(area, tbl, items){
   // Build section before Notes
   const wrap = document.createElement('div'); wrap.className='chart-freetrans';
   const h = document.createElement('h3'); h.textContent='Free translations'; wrap.appendChild(h);
-  Object.keys(items).sort((a,b)=>{ const na=Number(a), nb=Number(b); if(!isNaN(na)&&!isNaN(nb)) return na-nb; return String(a).localeCompare(String(b)); }).forEach(label=>{
-    const text = items[label]; if(!text) return;
+  // Render FT items in row order by scanning rows and using GUID lookup
+  const rowOrder = Array.from(tbl.querySelectorAll('tbody tr')).filter(r=> !r.classList.contains('title1') && !r.classList.contains('title2') && !r.classList.contains('ft-inline'));
+  rowOrder.forEach(tr=>{
+    const label = computeRowLabelFromRow(tr); const text = items[label]; if(!text) return;
     const item = document.createElement('div'); item.className='ft-item'; item.id = 'ft-' + label;
     const lab = document.createElement('div'); lab.className='ft-label';
     const back = document.createElement('a'); back.href = '#row-' + label + '-ftsrc'; back.textContent = label; // back to row number
@@ -3426,6 +3692,273 @@ function initNotesControls(){
   modeSel.addEventListener('change', onChange);
   widthIn.addEventListener('change', onChange);
   byId('notesReset')?.addEventListener('click', ()=>{ modeSel.value='inline'; widthIn.value=''; onChange(); });
+}
+
+/* ===== Salience Bands (row color coding) ===== */
+function showSaliencePanel(show){ const p = byId('saliencePanel'); if(p) p.style.display = show ? 'block' : 'none'; }
+function loadSaliencePrefs(){
+  const d = loadJSON(SALIENCE_PREFS_KEY) || {};
+  return {
+    enabled: d.enabled !== false,
+    showLegend: d.showLegend !== false,
+    showColumn: !!d.showColumn,
+    cellOnly: !!d.cellOnly,
+    opacity: (typeof d.opacity === 'number') ? d.opacity : 1,
+    tree: Array.isArray(d.tree) ? d.tree : [],
+    // assignments: map of rowGuid -> bandId; support legacy label keys and migrate lazily
+    assignments: d.assignments || {}
+  };
+}
+function saveSaliencePrefs(p){
+  const out = {
+    enabled: (typeof p.enabled === 'boolean') ? p.enabled : true,
+    showLegend: (typeof p.showLegend === 'boolean') ? p.showLegend : true,
+    showColumn: !!p.showColumn,
+    cellOnly: !!p.cellOnly,
+    opacity: (typeof p.opacity === 'number') ? p.opacity : 1,
+    tree: Array.isArray(p.tree)?p.tree:[],
+    // Keep assignments as-is; explicit delete flows (e.g., removeNode) will clean up invalid IDs
+    assignments: p.assignments || {}
+  };
+  // Inherit colors: fill missing child colors from nearest ancestor on save
+  (function inherit(list, parentColor){
+    (list||[]).forEach(n=>{
+      if(!n.color && parentColor) n.color = parentColor;
+      inherit(n.children||[], n.color || parentColor);
+    });
+  })(out.tree, null);
+  saveJSON(SALIENCE_PREFS_KEY, out);
+}
+function newSalNode(label){ return { id: 'sal_'+Date.now().toString(36)+'_'+Math.floor(Math.random()*1000), label: label||'Band', color: '#fffad1', children: [] }; }
+function findNode(rootList, id){
+  const stack = rootList.map((n,idx)=>({ node:n, parent:null, index:idx, list:rootList }));
+  while(stack.length){ const cur = stack.pop(); if(cur.node.id===id) return cur; (cur.node.children||[]).forEach((c,i)=> stack.push({ node:c, parent:cur.node, index:i, list:cur.node.children })); }
+  return null;
+}
+function computeSalienceNumbers(tree){
+  const map = {};
+  (function walk(list, prefix){
+    (list||[]).forEach((n, i)=>{
+      const num = prefix ? (prefix + '.' + (i+1)) : String(i+1);
+      map[n.id] = num;
+      walk(n.children||[], num);
+    });
+  })(tree||[], '');
+  return map;
+}
+function initSalienceControls(){
+  const listHost = byId('salienceList'); if(!listHost) return;
+  const addRootBtn = byId('salAddRoot');
+  const clearAssignBtn = byId('salClearAssignments');
+  const enabledCb = byId('salienceEnabled');
+  const legendCb = byId('salienceShowLegend');
+  const colCb = byId('salienceShowColumn');
+  const cellOnlyCb = byId('salienceCellOnly');
+  const opacityRange = byId('salienceOpacity');
+  let prefs = loadSaliencePrefs();
+  if(enabledCb){ enabledCb.checked = !!prefs.enabled; enabledCb.addEventListener('change', ()=>{ prefs.enabled = !!enabledCb.checked; persist(); }); }
+  if(legendCb){ legendCb.checked = !!prefs.showLegend; legendCb.addEventListener('change', ()=>{ prefs.showLegend = !!legendCb.checked; persist(); }); }
+  if(colCb){ colCb.checked = !!prefs.showColumn; colCb.addEventListener('change', ()=>{ prefs.showColumn = !!colCb.checked; persist(); }); }
+  if(cellOnlyCb){ cellOnlyCb.checked = !!prefs.cellOnly; cellOnlyCb.addEventListener('change', ()=>{ prefs.cellOnly = !!cellOnlyCb.checked; persist(); }); }
+  if(opacityRange){ opacityRange.value = String((typeof prefs.opacity==='number'?prefs.opacity:1)); opacityRange.addEventListener('input', ()=>{ prefs.opacity = Number(opacityRange.value); persist(); }); }
+  function persist(options){
+    const mergeAssignments = !options || options.mergeAssignments !== false;
+    if(mergeAssignments){
+      try{
+        const latest = loadSaliencePrefs();
+        // Union storage and in-memory assignments to avoid clobbering recent row picks
+        const curA = prefs.assignments || {};
+        const latA = (latest && latest.assignments) || {};
+        prefs.assignments = Object.assign({}, latA, curA);
+        // Ensure tree is at least defined to avoid accidental pruning when an empty object is saved from elsewhere
+        if(!Array.isArray(prefs.tree)){
+          if(Array.isArray(latest.tree)) prefs.tree = latest.tree;
+          else prefs.tree = [];
+        }
+      }catch(_){ /* ignore */ }
+    }
+    saveSaliencePrefs(prefs);
+    refreshSalienceVisuals(byId('renderArea'));
+  }
+  function removeNode(id){
+    function rec(list){
+      const idx = list.findIndex(x=> x.id===id);
+      if(idx!==-1){ list.splice(idx,1); return true; }
+      return list.some(n=> rec(n.children||[]));
+    }
+    rec(prefs.tree);
+    // Remove assignments to this node and all descendants
+    const toDelete = new Set(); (function collect(id){ const hit = findNode(prefs.tree, id); if(hit){ toDelete.add(hit.node.id); (hit.node.children||[]).forEach(c=> collect(c.id)); } })(id);
+    Object.keys(prefs.assignments).forEach(row=>{ if(toDelete.has(prefs.assignments[row])) delete prefs.assignments[row]; });
+  }
+  function moveUp(id){ const loc = findNode(prefs.tree, id); if(!loc) return; const arr = loc.list; const i = loc.index; if(i>0){ const t=arr[i-1]; arr[i-1]=arr[i]; arr[i]=t; persist(); render(); } }
+  function moveDown(id){ const loc = findNode(prefs.tree, id); if(!loc) return; const arr = loc.list; const i = loc.index; if(i < arr.length-1){ const t=arr[i+1]; arr[i+1]=arr[i]; arr[i]=t; persist(); render(); } }
+  function promote(id){
+    const loc = findNode(prefs.tree, id); if(!loc || !loc.parent) return; // already root
+    const parentLoc = findNode(prefs.tree, loc.parent.id);
+    const grandList = parentLoc ? parentLoc.list : prefs.tree;
+    // Remove from current list
+    loc.list.splice(loc.index,1);
+    // Insert after parent
+    const parentIndex = grandList.indexOf(loc.parent);
+    grandList.splice(parentIndex+1, 0, loc.node);
+    persist(); render();
+  }
+  function demote(id){
+    const loc = findNode(prefs.tree, id); if(!loc) return; const arr = loc.list; const i = loc.index; if(i<=0) return; // need a previous sibling
+    const prev = arr[i-1]; prev.children = Array.isArray(prev.children) ? prev.children : [];
+    // Remove from current and push into prev.children
+    arr.splice(i,1); prev.children.push(loc.node);
+    persist(); render();
+  }
+  function addChild(id){ const loc = findNode(prefs.tree, id); if(!loc) return; loc.node.children = Array.isArray(loc.node.children) ? loc.node.children : []; loc.node.children.push(newSalNode('Child')); persist(); render(); }
+  function render(){
+    const nums = computeSalienceNumbers(prefs.tree);
+    listHost.innerHTML='';
+    function renderList(list, level){
+      const ul = document.createElement('ul'); ul.className='salience-tree'; if(level>0) ul.style.marginLeft = (level*16) + 'px';
+      (list||[]).forEach((n)=>{
+        const li = document.createElement('li'); li.className='sal-item';
+    const num = document.createElement('span'); num.className='sal-num'; num.textContent = nums[n.id] || '';
+  const color = document.createElement('input'); color.type='color'; color.value = n.color || (level>0 ? (findParentColor(prefs.tree, n.id)||'#fffad1') : '#fffad1'); color.title='Row background'; color.addEventListener('input', ()=>{ n.color=color.value; persist(); /* ensure all visuals sync immediately */ refreshSalienceVisuals(byId('renderArea')); });
+        const colorSw = document.createElement('span'); colorSw.className='sal-color'; colorSw.style.background = color.value; color.addEventListener('input', ()=>{ colorSw.style.background=color.value; });
+  const label = document.createElement('input'); label.type='text'; label.value = n.label || ''; label.placeholder='Label (e.g., secondary event line)'; label.addEventListener('input', ()=>{ n.label = label.value; persist(); refreshSalienceVisuals(byId('renderArea')); });
+        const up = document.createElement('button'); up.className='sal-btn'; up.title='Move up'; up.textContent='↑'; up.addEventListener('click', ()=> moveUp(n.id));
+        const down = document.createElement('button'); down.className='sal-btn'; down.title='Move down'; down.textContent='↓'; down.addEventListener('click', ()=> moveDown(n.id));
+        const prom = document.createElement('button'); prom.className='sal-btn'; prom.title='Promote (outdent)'; prom.textContent='←'; prom.addEventListener('click', ()=> promote(n.id));
+        const demo = document.createElement('button'); demo.className='sal-btn'; demo.title='Demote (indent)'; demo.textContent='→'; demo.addEventListener('click', ()=> demote(n.id));
+        const add = document.createElement('button'); add.className='sal-btn'; add.title='Add sub-band'; add.textContent='＋'; add.addEventListener('click', ()=> addChild(n.id));
+  const del = document.createElement('button'); del.className='sal-btn'; del.title='Delete band'; del.textContent='🗑'; del.addEventListener('click', ()=>{ if(confirm('Delete this band and any sub-bands?')){ removeNode(n.id); persist({ mergeAssignments: false }); render(); } });
+        li.appendChild(num); li.appendChild(colorSw); li.appendChild(color); li.appendChild(label); li.appendChild(up); li.appendChild(down); li.appendChild(prom); li.appendChild(demo); li.appendChild(add); li.appendChild(del);
+        ul.appendChild(li);
+        if(n.children && n.children.length){ ul.appendChild(renderList(n.children, level+1)); }
+      });
+      return ul;
+    }
+    listHost.appendChild(renderList(prefs.tree, 0));
+  }
+  if(addRootBtn){ addRootBtn.onclick = ()=>{ prefs.tree.push(newSalNode('Band')); persist(); render(); }; }
+  if(clearAssignBtn){ clearAssignBtn.onclick = ()=>{ if(confirm('Clear all row salience assignments?')){ prefs.assignments = {}; persist({ mergeAssignments: false }); render(); } }; }
+  // First render
+  render();
+}
+function findParentColor(tree, id){
+  const loc = findNode(tree, id); if(!loc || !loc.parent) return null; return loc.parent.color || findParentColor(tree, loc.parent.id);
+}
+function buildSalienceOptions(){
+  const prefs = loadSaliencePrefs(); const nums = computeSalienceNumbers(prefs.tree);
+  const opts = [];
+  (function walk(list){ (list||[]).forEach(n=>{ opts.push({ id:n.id, number: nums[n.id]||'', label: n.label||'', color: n.color||'#fffad1' }); walk(n.children||[]); }); })(prefs.tree||[]);
+  return opts;
+}
+function showSaliencePicker(title, currentId){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div'); overlay.className='modal-overlay';
+    const modal = document.createElement('div'); modal.className='modal'; overlay.appendChild(modal);
+    const h = document.createElement('h3'); h.textContent = title || 'Select salience band'; modal.appendChild(h);
+    const sel = document.createElement('select'); sel.style.width='100%'; sel.style.padding='8px'; sel.style.border='1px solid #e5e5e5'; sel.style.borderRadius='6px';
+    const none = document.createElement('option'); none.value=''; none.textContent='(None)'; sel.appendChild(none);
+    const opts = buildSalienceOptions();
+    opts.forEach(o=>{ const opt = document.createElement('option'); opt.value=o.id; opt.textContent = `${o.number} — ${o.label || '(unnamed)'}`; if(currentId===o.id) opt.selected=true; sel.appendChild(opt); });
+    modal.appendChild(sel);
+    const actions = document.createElement('div'); actions.className='modal-actions'; modal.appendChild(actions);
+    const cancel = document.createElement('button'); cancel.className='secondary'; cancel.textContent='Cancel';
+    const save = document.createElement('button'); save.textContent='Save';
+    actions.appendChild(cancel); actions.appendChild(save);
+    function done(val){ document.body.removeChild(overlay); resolve(val); }
+    cancel.addEventListener('click', ()=> done(null));
+    save.addEventListener('click', ()=> done(sel.value || ''));
+    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) done(null); });
+    document.body.appendChild(overlay);
+  });
+}
+function wireSalienceButtons(area){
+  const tbl = area?.querySelector('table.chartshell'); if(!tbl) return;
+  // Remove any existing buttons first
+  tbl.querySelectorAll('.add-band-btn').forEach(b=> b.remove());
+  const prefs = loadSaliencePrefs();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{
+    if(tr.classList.contains('title1') || tr.classList.contains('title2') || tr.classList.contains('ft-inline')) return;
+    const firstCell = tr.querySelector('td'); if(!firstCell) return;
+    const rownumSpan = firstCell.querySelector('.interlinear .pair .w.rownum'); if(!rownumSpan) return;
+    const rowLabel = computeRowLabelFromRow(tr);
+    const btn = document.createElement('button'); btn.type='button'; btn.className='add-band-btn';
+    function setBtnText(){
+      const a = (loadSaliencePrefs().assignments||{});
+      const id = a[rowLabel];
+      if(!id){ btn.textContent = 'Salience band…'; btn.title='Assign a salience band to this row'; }
+      else {
+        const opts = buildSalienceOptions(); const x = opts.find(o=>o.id===id);
+        const num = x ? x.number : ''; const lab = x ? x.label : '';
+        btn.textContent = num ? `Band ${num}` : 'Band'; btn.title = lab ? lab : 'Assigned band';
+      }
+    }
+    setBtnText();
+    btn.addEventListener('click', async ()=>{
+  const prefs = loadSaliencePrefs(); const a = prefs.assignments||{}; const current = a[rowLabel] ?? '';
+      const hasBands = (buildSalienceOptions().length > 0);
+      if(!hasBands){
+        if(confirm('No salience bands defined yet. Open Salience Bands panel to add one?')){
+          // Expand the panel
+          const panel = byId('saliencePanel'); const header = byId('salienceHeader');
+          if(panel && header && panel.getAttribute('data-collapsed')==='1'){ header.click(); }
+        }
+        return;
+      }
+      const sel = await showSaliencePicker('Salience band — row '+rowLabel, current);
+      if(sel === null) return; // cancelled
+  const p = loadSaliencePrefs(); p.assignments = p.assignments || {};
+  if(sel){ p.assignments[rowLabel] = sel; }
+  else { delete p.assignments[rowLabel]; }
+      saveSaliencePrefs(p);
+      setBtnText();
+      refreshSalienceVisuals(area);
+    });
+    rownumSpan.parentElement?.appendChild(btn);
+  });
+}
+function updateSalienceButtons(area){
+  const tbl = area?.querySelector('table.chartshell'); if(!tbl) return;
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{
+    if(tr.classList.contains('title1') || tr.classList.contains('title2') || tr.classList.contains('ft-inline')) return;
+    const firstCell = tr.querySelector('td'); if(!firstCell) return;
+    const rownumSpan = firstCell.querySelector('.interlinear .pair .w.rownum'); if(!rownumSpan) return;
+    const rowLabel = computeRowLabelFromRow(tr);
+    const btn = rownumSpan.parentElement?.querySelector('.add-band-btn'); if(!btn) return;
+    const a = (loadSaliencePrefs().assignments||{}); const id = a[rowLabel];
+    if(!id){ btn.textContent='Salience band…'; btn.title='Assign a salience band to this row'; }
+    else { const opts = buildSalienceOptions(); const x = opts.find(o=>o.id===id); const num = x?x.number:''; const lab=x?x.label:''; btn.textContent = num?`Band ${num}`:'Band'; btn.title = lab||'Assigned band'; }
+  });
+}
+function applySalienceBandsToArea(area){
+  area = area || byId('renderArea'); if(!area) return;
+  const tbl = area.querySelector('table.chartshell'); if(!tbl) return;
+  // Clear previous coloring
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{
+    if(tr.classList.contains('title1') || tr.classList.contains('title2') || tr.classList.contains('ft-inline')) return;
+    Array.from(tr.children).forEach(td=>{ if(td.dataset.salApplied==='1'){ td.style.backgroundColor=''; delete td.dataset.salApplied; } });
+  });
+  const prefs = loadSaliencePrefs();
+  if(!prefs.enabled){ return; }
+  const idToColor = {}; (function walk(list){ (list||[]).forEach(n=>{ idToColor[n.id]=n.color||'#fffad1'; walk(n.children||[]); }); })(prefs.tree||[]);
+  // Apply
+  // Apply assignments by scanning rows to resolve GUIDs on the fly
+  const rows = Array.from(tbl.querySelectorAll('tbody tr')).filter(r=> !r.classList.contains('title1') && !r.classList.contains('title2') && !r.classList.contains('ft-inline'));
+  rows.forEach(tr=>{
+    const label = computeRowLabelFromRow(tr);
+    const bandId = prefs.assignments[label];
+    const color = bandId ? idToColor[bandId] : null; if(!color) return;
+    if(!tr) return;
+    const bg = alphaColor(color, prefs.opacity);
+    if(prefs.cellOnly){
+      const cell = tr.querySelector(':scope > td[data-sal-col="1"]') || tr.firstElementChild;
+      if(cell){ cell.style.backgroundColor = bg; cell.dataset.salApplied='1'; }
+    } else {
+      Array.from(tr.children).forEach(td=>{ td.style.backgroundColor = bg; td.dataset.salApplied='1'; });
+    }
+  });
+  // Keep column cells in sync if present
+  updateSalienceColumnCells(tbl);
 }
 </script>
 </body>
