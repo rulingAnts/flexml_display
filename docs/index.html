@@ -143,7 +143,6 @@
   .collapsible-body{margin-top:8px}
   #prologuePanel[data-collapsed="1"] .collapsible-body,
   #abbrevPanel[data-collapsed="1"] .collapsible-body,
-  #salienceLegendPanel[data-collapsed="1"] .collapsible-body,
   #appendHtmlPanel[data-collapsed="1"] .collapsible-body,
   #listRefPanel[data-collapsed="1"] .collapsible-body,
   #postloguePanel[data-collapsed="1"] .collapsible-body,
@@ -155,18 +154,6 @@
   .lr-group{border:1px solid #dcefdc;background:#f8fff8;border-radius:6px;padding:8px;margin-bottom:8px}
   .lr-group-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
   .lr-group-items{margin-left:24px}
-  /* Panel group containers */
-  .panel-group{border:2px solid #d0d0d0;background:#f5f5f5;border-radius:10px;padding:12px;margin-bottom:16px}
-  .panel-group-header{font-size:1.1rem;font-weight:700;color:#333;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #d0d0d0}
-  .panel-group .prologue-panel,
-  .panel-group .abbrev-panel,
-  .panel-group .listref-panel{margin-bottom:10px}
-  .panel-group .prologue-panel:last-child,
-  .panel-group .abbrev-panel:last-child,
-  .panel-group .listref-panel:last-child{margin-bottom:0}
-  /* Nested panel group (for Settings > Genre) */
-  .panel-subgroup{border:1px solid #e0e0e0;background:#fafafa;border-radius:8px;padding:10px;margin-top:10px;margin-left:16px}
-  .panel-subgroup-header{font-size:1rem;font-weight:600;color:#555;margin-bottom:8px}
   /* Inserted external HTML blocks */
   .inserted-html-before-prologue, .inserted-html-after-chart{border:1px solid #eee;padding:8px 10px;border-radius:6px;background:#fff; margin:10px 0}
   .table-view{width:100%;border-collapse:collapse}
@@ -320,14 +307,9 @@
   <div style="margin-left:auto" class="small-muted" hidden>© 2025 Seth Johnston</div>
 </header>
 
-<!-- Settings Panel Group -->
-<div class="panel-group" id="settingsGroup">
-  <div class="panel-group-header">Settings</div>
-
-  <!-- App -->
-  <section id="aboutPanel" class="prologue-panel" aria-live="polite" data-collapsed="0" data-no-persist="1" style="background:#eef5ff;border:1px solid #c8dbff;padding:0;border-radius:8px">
+  <section id="aboutPanel" class="prologue-panel" aria-live="polite" data-collapsed="0" data-no-persist="1" style="background:#eef5ff;border:1px solid #c8dbff;padding:0;border-radius:8px;margin-bottom:12px">
     <div class="collapsible-header" id="aboutHeader" style="padding:10px 14px">
-      <span class="small-muted">App</span>
+      <span class="small-muted">About FLEx XML Viewer</span>
       <span class="chev">▾</span>
     </div>
     <div class="collapsible-body" style="padding:10px 14px">
@@ -352,77 +334,6 @@
   </p>
     </div>
   </section>
-
-  <!-- Language -->
-  <div id="listRefPanel" class="listref-panel" aria-live="polite" style="display:none" data-collapsed="1">
-    <div class="collapsible-header" id="listRefHeader">
-      <span class="small-muted">Text Chart Marker Display and Order Settings</span>
-      <span class="chev">▸</span>
-    </div>
-    <div class="collapsible-body">
-    <div class="listref-grid">
-      <div class="rows">
-        <div class="small-muted" style="margin:6px 0; display:flex; align-items:center; gap:12px; justify-content:space-between; flex-wrap:wrap">
-          <span>Control how specific TextChart Markers render in cells. Order here sets left-to-right order within the same cell. Styling and visibility only affect in-cell TextChart Markers; the Abbreviations list remains alphabetical.</span>
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
-            <label title="Choose how to order tokens in cells">
-              <select id="listRefEnforceMode">
-                <option value="none" selected>No ordering (source order)</option>
-                <option value="groups">Enforce within groups</option>
-                <option value="global">Enforce globally</option>
-              </select>
-            </label>
-            <button id="listRefToggleOrder" class="small-btn secondary" title="Toggle ordering direction">(top → bottom)</button>
-            <button id="listRefShowAll" class="small-btn" title="Show all abbreviations">Show all</button>
-            <button id="listRefHideAll" class="small-btn secondary" title="Hide all abbreviations">Hide all</button>
-            <button id="listRefResetAllStyles" class="small-btn secondary" title="Clear styles for all groups and items (keep visibility/order)">Reset all styles</button>
-            <button id="listRefResetOrder" class="small-btn secondary" title="Reset order to most prevalent pattern from this chart">Reset order</button>
-          </div>
-        </div>
-        <div id="listRefGroups"></div>
-        <div id="listRefRows"></div>
-        <div id="listRefWarnings" class="small-muted" style="margin-top:8px; display:none"></div>
-        <div style="margin-top:8px">
-          <div class="small-muted" style="font-weight:600;margin-bottom:6px">Groups</div>
-          <div id="listRefGroupList"></div>
-          <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <input id="listRefNewGroupName" type="text" placeholder="New group name" style="padding:6px;border:1px solid #e5e5e5;border-radius:6px">
-            <button id="listRefAddGroup" class="small-btn">Add group</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    </div>
-  </div>
-
-  <!-- Genre subgroup -->
-  <div class="panel-subgroup">
-    <div class="panel-subgroup-header">Genre</div>
-    <!-- Salience Bands (row color coding) -->
-    <div id="saliencePanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
-      <div class="collapsible-header" id="salienceHeader">
-        <span class="small-muted">Salience Bands (row color coding)</span>
-        <span class="chev">▸</span>
-      </div>
-      <div class="collapsible-body">
-        <div class="small-muted" style="margin-bottom:8px">Create a nested outline of bands. Each band has an automatic number (e.g., 1, 1.1, 1.1.2), a label, and a color. Assign a band to rows from the chart using the "Salience band…" button next to the row number.</div>
-        <div class="controls-inline" style="margin:6px 0 10px 0">
-          <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceEnabled" type="checkbox" checked> Show salience band colors</label>
-          <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceShowLegend" type="checkbox" checked> Show legend</label>
-          <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceShowColumn" type="checkbox"> Show salience column</label>
-          <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceCellOnly" type="checkbox"> Limit color to salience cell only</label>
-          <label class="small-muted" title="0 = transparent, 1 = full color" style="display:flex; align-items:center; gap:8px">Opacity <input id="salienceOpacity" type="range" min="0" max="1" step="0.05" value="1" style="width:160px"></label>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px">
-          <button id="salAddRoot" class="small-btn">Add band</button>
-          <button id="salClearAssignments" class="small-btn secondary" title="Clear band assignments for all rows">Clear all row assignments</button>
-        </div>
-        <div id="salienceList"></div>
-      </div>
-    </div>
-  </div>
-
-</div><!-- End Settings Panel Group -->
 
 <textarea id="xmlInput" placeholder="Paste XML here or choose a file..." hidden></textarea>
 
@@ -451,11 +362,7 @@
   </div>
 </div>
 
-<!-- Document Layout Panel Group -->
-<div class="panel-group" id="documentLayoutGroup">
-  <div class="panel-group-header">Document Layout</div>
-
-<!-- Chart header and note -->
+<!-- Optional heading and preface (HTML) to insert before a Text Chart -->
 <div id="prologuePanel" class="prologue-panel" aria-live="polite" data-collapsed="1">
   <div class="collapsible-header" id="prologueHeader">
     <span class="small-muted">Chart header and note (optional)</span>
@@ -530,20 +437,6 @@
   </div>
 </div>
 
-<!-- Salience Band Legend -->
-<div id="salienceLegendPanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
-  <div class="collapsible-header" id="salienceLegendHeader">
-    <span class="small-muted">Salience Band Legend</span>
-    <span class="chev">▸</span>
-  </div>
-  <div class="collapsible-body">
-    <div class="small-muted">
-      <p>The Salience Band Legend will be automatically generated and displayed in the chart when salience bands are configured and enabled.</p>
-      <p>To configure salience bands, use the "Salience Bands (row color coding)" panel in the Settings section below.</p>
-    </div>
-  </div>
-</div>
-
 <!-- Additional HTML (before Prologue and after Text Chart) -->
 <div id="appendHtmlPanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
   <div class="collapsible-header" id="appendHeader">
@@ -572,6 +465,28 @@
   </div>
   </div>
 
+  <!-- Salience Bands (row color coding) -->
+  <div id="saliencePanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
+    <div class="collapsible-header" id="salienceHeader">
+      <span class="small-muted">Salience Bands (row color coding)</span>
+      <span class="chev">▸</span>
+    </div>
+    <div class="collapsible-body">
+      <div class="small-muted" style="margin-bottom:8px">Create a nested outline of bands. Each band has an automatic number (e.g., 1, 1.1, 1.1.2), a label, and a color. Assign a band to rows from the chart using the “Salience band…” button next to the row number.</div>
+      <div class="controls-inline" style="margin:6px 0 10px 0">
+        <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceEnabled" type="checkbox" checked> Show salience band colors</label>
+        <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceShowLegend" type="checkbox" checked> Show legend</label>
+        <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceShowColumn" type="checkbox"> Show salience column</label>
+        <label class="small-muted" style="display:flex; align-items:center; gap:8px"><input id="salienceCellOnly" type="checkbox"> Limit color to salience cell only</label>
+        <label class="small-muted" title="0 = transparent, 1 = full color" style="display:flex; align-items:center; gap:8px">Opacity <input id="salienceOpacity" type="range" min="0" max="1" step="0.05" value="1" style="width:160px"></label>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px">
+        <button id="salAddRoot" class="small-btn">Add band</button>
+        <button id="salClearAssignments" class="small-btn secondary" title="Clear band assignments for all rows">Clear all row assignments</button>
+      </div>
+      <div id="salienceList"></div>
+    </div>
+  </div>
 
   <!-- Notes column options -->
   <div id="notesPanel" class="prologue-panel" aria-live="polite" style="display:none" data-collapsed="1">
@@ -652,7 +567,47 @@
     </div>
     </div>
 
-</div><!-- End Document Layout Panel Group -->
+  <!-- ListRef Styling/Ordering -->
+<div id="listRefPanel" class="listref-panel" aria-live="polite" style="display:none" data-collapsed="1">
+  <div class="collapsible-header" id="listRefHeader">
+    <span class="small-muted">Text Chart Marker Display and Order Settings</span>
+    <span class="chev">▸</span>
+  </div>
+  <div class="collapsible-body">
+  <div class="listref-grid">
+    <div class="rows">
+      <div class="small-muted" style="margin:6px 0; display:flex; align-items:center; gap:12px; justify-content:space-between; flex-wrap:wrap">
+        <span>Control how specific TextChart Markers render in cells. Order here sets left-to-right order within the same cell. Styling and visibility only affect in-cell TextChart Markers; the Abbreviations list remains alphabetical.</span>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          <label title="Choose how to order tokens in cells">
+            <select id="listRefEnforceMode">
+              <option value="none" selected>No ordering (source order)</option>
+              <option value="groups">Enforce within groups</option>
+              <option value="global">Enforce globally</option>
+            </select>
+          </label>
+          <button id="listRefToggleOrder" class="small-btn secondary" title="Toggle ordering direction">(top → bottom)</button>
+          <button id="listRefShowAll" class="small-btn" title="Show all abbreviations">Show all</button>
+          <button id="listRefHideAll" class="small-btn secondary" title="Hide all abbreviations">Hide all</button>
+          <button id="listRefResetAllStyles" class="small-btn secondary" title="Clear styles for all groups and items (keep visibility/order)">Reset all styles</button>
+          <button id="listRefResetOrder" class="small-btn secondary" title="Reset order to most prevalent pattern from this chart">Reset order</button>
+        </div>
+      </div>
+      <div id="listRefGroups"></div>
+      <div id="listRefRows"></div>
+      <div id="listRefWarnings" class="small-muted" style="margin-top:8px; display:none"></div>
+      <div style="margin-top:8px">
+        <div class="small-muted" style="font-weight:600;margin-bottom:6px">Groups</div>
+        <div id="listRefGroupList"></div>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="listRefNewGroupName" type="text" placeholder="New group name" style="padding:6px;border:1px solid #e5e5e5;border-radius:6px">
+          <button id="listRefAddGroup" class="small-btn">Add group</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+</div>
 
 <div id="viewer" class="viewer" aria-live="polite">
   <div class="viewer-header" style="font-weight:600;margin-bottom:8px">Preview</div>
@@ -1683,7 +1638,6 @@ function reconcileAbbrevPrefsWithLabels(prefs, labels){
   return out;
 }
 function showAbbrevPanel(show){ byId('abbrevPanel').style.display = show ? 'block' : 'none'; }
-function showSalienceLegendPanel(show){ const p = byId('salienceLegendPanel'); if(p) p.style.display = show ? 'block' : 'none'; }
 function buildAbbrevControls(labels){
   const panel = byId('abbrevPanel'); if(!panel) return;
   const includeCb = byId('abbrevInclude');
@@ -1966,9 +1920,6 @@ async function renderDocument(xmlDoc){
     showAbbrevPanel(true);
     wireCollapsible('abbrevPanel','abbrevHeader');
     buildAbbrevControls(globalState.chartAbbrevLabels);
-    // Show Salience Legend panel
-    showSalienceLegendPanel(true);
-    wireCollapsible('salienceLegendPanel','salienceLegendHeader');
     // Prepare ListRef controls (we will collect labels from rendered DOM; compute a suggested order from XML)
     const suggestedOrder = computeListRefSuggestedOrderFromXml(xmlDoc);
     showListRefPanel(true);
