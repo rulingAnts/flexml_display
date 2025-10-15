@@ -1,6 +1,11 @@
-# FLEx XML Viewer
+# FLEx XML Tools
 
-Client‑side viewer for exploring FieldWorks (FLEx) XML exports in a clean, readable format (which you can also copy and paste). Runs entirely in the browser (no server) and also ships as a Windows desktop app via Electron.
+Client‑side tools for exploring FieldWorks (FLEx) XML exports in a clean, readable format. Runs entirely in the browser (no server) and also ships as a Windows desktop app via Electron.
+
+This project provides two specialized tools:
+
+1. **FLEx XML Viewer** (`index.html`) - General-purpose viewer for Lists, Phonology, Wordforms, and Generic XML
+2. **Discourse Analysis Tool** (`discourse.html`) - Specialized tool for viewing, transforming, and exporting Discourse Charts (Text Charts)
 
 ### Privacy at a glance
 
@@ -13,28 +18,45 @@ This project is part of the Field Linguistics Extension Tools (FLET) project: [h
 - Web app: [https://rulingants.github.io/flexml_display](https://rulingants.github.io/flexml_display)
 - Latest Windows release: [https://github.com/rulingAnts/flexml_display/releases/latest](https://github.com/rulingAnts/flexml_display/releases/latest)
 
-## What it does
+## What they do
 
-FLEx XML Viewer renders common FLEx export types:
+### FLEx XML Viewer
 
-- Discourse Charts (some work still needed, but very usable already)
+The general-purpose XML viewer handles:
+
 - Lists — hierarchical `<list>` structures as collapsible trees
 - Translated Lists — multilingual AUni-based lists with language ordering/visibility controls
 - Phonology — natural classes, phoneme inventories, cross-references, and codes
 - Wordforms — lexical items and analyses, with Card and Table views and filtering
 - Generic XML — fallback recursive tree for any well‑formed XML
 
-Not in scope: LIFT, FLExText (open those in FLEx), XLingPaper (open in XLingPaper), Word XML (open in Word).
+### Discourse Analysis Tool (FDAT)
+
+The Discourse Analysis Tool is dedicated to Text Charts and provides:
+
+- Display FLEx Text Charts (Discourse Charts) as HTML tables with resizable columns
+- Preserve formatting and interlinear structure from FLEx exports
+- Add custom prologues, epilogues, and HTML content before/after charts
+- Configure abbreviations, salience bands, free translations, and notes display
+- Control marker display order and visibility
+- Export charts with all formatting and customizations
+
+Not in scope for either tool: LIFT, FLExText (open those in FLEx), XLingPaper (open in XLingPaper), Word XML (open in Word).
 
 ## Try it online (no install)
 
+### FLEx XML Viewer
 1. Open the web app: [https://rulingants.github.io/flexml_display](https://rulingants.github.io/flexml_display)
 2. Paste XML into the textbox or choose a .xml file.
-3. Click Transform.
-4. Optional:
-   - Toggle “Show element names”
-   - Open in new window
-   - Save as HTML (exports a standalone snapshot of the current view)
+3. Click Preview.
+4. Optional: Toggle "Show element names", Save as HTML
+
+### Discourse Analysis Tool
+1. Open the tool: [https://rulingants.github.io/flexml_display/discourse.html](https://rulingants.github.io/flexml_display/discourse.html)
+2. Paste Discourse Chart XML or choose a .xml file.
+3. Click Preview.
+4. Configure chart options (prologue, abbreviations, salience bands, etc.)
+5. Export using "Export Discourse Chart" button
 
 All processing is local in your browser; your files are not uploaded.
 
@@ -48,12 +70,19 @@ The desktop app bundles the same viewer for offline use.
 
 ## Usage tips
 
+### FLEx XML Viewer
 - Lists and Translated Lists: click triangles to expand/collapse; reorder and show/hide languages.
-- Phonology: click a phoneme “pill” to highlight it; click a table row to highlight related natural classes.
+- Phonology: click a phoneme "pill" to highlight it; click a table row to highlight related natural classes.
 - Wordforms: use the Filter box; switch Card/Table view; choose which gloss languages appear in Table view.
-- “Open in new window” creates a self‑contained view for sharing or printing; “Save as HTML” saves a static snapshot.
+- "Save as HTML" saves a static snapshot.
 
-Note: “Save as HTML” embeds the current page’s styles from the <head> (including any injected at runtime), so borders, interlinear alignment, and other formatting match what you see. The exported HTML is a static snapshot — interactive features like column resizing are not included.
+### Discourse Analysis Tool
+- Resize columns: click and drag column borders in the second header row
+- Configure display: use the collapsible panels to customize prologue, abbreviations, salience bands, free translations, and notes
+- Export: use "Export Discourse Chart" to open in a new window with export toolbar
+- "Save as HTML" embeds current styles and formatting for a complete snapshot
+
+Note: "Save as HTML" embeds the current page's styles from the <head> (including any injected at runtime), so borders, interlinear alignment, and other formatting match what you see. The exported HTML is a static snapshot — interactive features like column resizing are not included.
 
 ## Privacy
 

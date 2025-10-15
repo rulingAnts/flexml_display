@@ -1,7 +1,7 @@
 {
   "name": "flexml_display",
   "version": "2.1.0",
-  "description": "FLExText Discourse Analysis Tool (and XML Exporter).",
+  "description": "FLEx XML Tools: General XML Viewer and Discourse Analysis Tool for FieldWorks exports.",
   "repository": {
     "type": "git",
     "url": "https://github.com/rulingAnts/flexml_display.git"
@@ -33,7 +33,7 @@
   },
   "build": {
     "appId": "com.rulingants.flexmlviewer",
-    "productName": "FLExText Discourse Analysis Tool (and XML Exporter)",
+    "productName": "FLEx XML Tools",
     "files": [
       "docs/**/*",
       "main.js",
