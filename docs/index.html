@@ -803,13 +803,16 @@ byId('transformBtn').addEventListener('click', async ()=> {
 });
 
 // Export Discourse Chart: open exported chart in a new window with toolbar
-byId('exportChartBtn').addEventListener('click', ()=>{
-  const html = buildStandaloneHTML({ includeToolbar: true });
-  const w = window.open('', '_blank');
-  if(!w) return;
-  w.document.write(html);
-  w.document.close();
-});
+const exportChartButton = byId('exportChartBtn');
+if(exportChartButton){
+  exportChartButton.addEventListener('click', ()=>{
+    const html = buildStandaloneHTML({ includeToolbar: true });
+    const w = window.open('', '_blank');
+    if(!w) return;
+    w.document.write(html);
+    w.document.close();
+  });
+}
 
 function sanitizeFilename(name){
   // Remove illegal characters for Windows/macOS, collapse spaces, and trim
@@ -1918,7 +1921,7 @@ async function renderDocument(xmlDoc){
   if(tag === 'phonology'){
     showProloguePanel(false);
     showAbbrevPanel(false);
-    area.appendChild(renderPhonologyView(xmlDoc));
+    area.appendChild(await renderPhonologyView(xmlDoc));
     return;
   }
 
@@ -1934,7 +1937,7 @@ async function renderDocument(xmlDoc){
     } else {
       showProloguePanel(false);
       showAbbrevPanel(false);
-      area.appendChild(renderListView(root));
+      area.appendChild(await renderListView(root));
       return;
     }
   }
@@ -1952,7 +1955,7 @@ async function renderDocument(xmlDoc){
   showProloguePanel(false);
   showAbbrevPanel(false);
   showAppendHtmlPanel(false);
-  area.appendChild(renderGenericView(root));
+  area.appendChild(await renderGenericView(root));
   // Hide print-headers toggle for non-TextChart views
   const rhc = byId('repeatHeadersContainer');
   if(rhc) rhc.style.display = 'none';
@@ -2061,6 +2064,74 @@ function updateSalienceColumnCells(tbl){
   });
 }
 
+/* ===== XSL Loading and Transformation Helpers ===== */
+async function loadXSL(filename){
+  const url = `xsl/${filename}?v=${Date.now()}`;
+  const resp = await fetch(url);
+  if(!resp.ok) throw new Error(`Failed to fetch XSL (${resp.status}): ${url}`);
+  const txt = await resp.text();
+  const doc = new DOMParser().parseFromString(txt, 'text/xml');
+  const err = doc.getElementsByTagName('parsererror')[0];
+  if(err) throw new Error('XSL parse error: ' + err.textContent.trim());
+  return doc;
+}
+
+async function applyXSL(xmlDoc, xslDoc, params = {}){
+  if(typeof XSLTProcessor === 'undefined'){
+    const frag = document.createDocumentFragment();
+    frag.appendChild(create('div', {cls:'small-muted'}, 'XSLTProcessor not supported in this browser.'));
+    return frag;
+  }
+  const proc = new XSLTProcessor();
+  proc.importStylesheet(xslDoc);
+  
+  // Set parameters
+  try{
+    for(const key in params){
+      proc.setParameter(null, key, params[key]);
+    }
+  }catch(_){/* no-op if params unsupported */}
+
+  // Run transform to a fragment
+  const frag = proc.transformToFragment(xmlDoc, document);
+  const wrapper = document.createElement('div');
+  wrapper.appendChild(frag);
+  
+  // If XSL produced a <head>, merge its styles into the page once
+  const head = wrapper.querySelector('head');
+  if (head) {
+    const styleEl = head.querySelector('style');
+    if (styleEl) {
+      const styleId = 'xsl-style-' + params.styleId || 'default';
+      let dest = document.getElementById(styleId);
+      if (!dest) {
+        dest = document.createElement('style');
+        dest.id = styleId;
+        document.head.appendChild(dest);
+      }
+      dest.textContent = styleEl.textContent || '';
+    }
+    head.querySelectorAll('link[rel="stylesheet"][href]').forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+      const exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"][href]'))
+        .some(l => l.getAttribute('href') === href);
+      if (!exists) {
+        const copy = document.createElement('link');
+        copy.rel = 'stylesheet';
+        copy.href = href;
+        document.head.appendChild(copy);
+      }
+    });
+  }
+  
+  const body = wrapper.querySelector('body');
+  const outFrag = document.createDocumentFragment();
+  const source = body || wrapper;
+  Array.from(source.childNodes).forEach(n => outFrag.appendChild(n));
+  return outFrag;
+}
+
 /* ===== Text Chart detection and rendering (XSLT) ===== */
 function isTextChartDocument(xmlDoc){
   if(!xmlDoc || !xmlDoc.documentElement) return false;
@@ -2144,78 +2215,44 @@ async function renderTextChart(xmlDoc){
   return outFrag;
 }
 
-/* ===== Monolingual List (unchanged behavior) ===== */
-function renderListView(root) {
+/* ===== Monolingual List (XSL-based transformation) ===== */
+async function renderListView(root) {
   // Accept either a single <list> or a top-level <lists> container
   if(!root) return create('div', {}, '(no list)');
-  const nodeName = (root.nodeName || '').toLowerCase();
-  if(nodeName === 'lists'){
-    const outer = create('div');
-    const lists = Array.from(root.querySelectorAll(':scope > list'));
-    if(lists.length === 0) return outer;
-    lists.forEach(l => outer.appendChild(renderListView(l)));
-    return outer;
+  
+  try {
+    // Create a temporary XML document with the root element
+    const tempDoc = document.implementation.createDocument(null, root.nodeName, null);
+    const importedRoot = tempDoc.importNode(root, true);
+    tempDoc.replaceChild(importedRoot, tempDoc.documentElement);
+    
+    // Load and apply XSL transformation
+    const xslDoc = await loadXSL('list-to-html.xsl');
+    const result = await applyXSL(tempDoc, xslDoc, { styleId: 'list' });
+    
+    // Add collapse/expand event listeners to toggle elements
+    const container = document.createElement('div');
+    container.appendChild(result);
+    
+    // Wire up toggle functionality
+    container.querySelectorAll('.toggle').forEach(toggle => {
+      const li = toggle.parentElement;
+      const ul = li.querySelector('ul.tree');
+      if(ul){
+        toggle.style.cursor = 'pointer';
+        toggle.addEventListener('click', () => {
+          li.classList.toggle('collapsed');
+          toggle.textContent = toggle.textContent === '▾' ? '▸' : '▾';
+        });
+      }
+    });
+    
+    return container;
+  } catch(err) {
+    console.error('Error rendering list view with XSL:', err);
+    const errorDiv = create('div', {cls:'small-muted'}, 'Error rendering list: ' + err.message);
+    return errorDiv;
   }
-
-  const container = create('div');
-  // title: prefer Name or name inside the list; also accept a <name><str> pattern
-  const title = (root.querySelector(':scope > name, :scope > Name')?.textContent?.trim()) || (root.querySelector(':scope > Name str, :scope > name str')?.textContent?.trim()) || 'List';
-  container.appendChild(create('div', { cls: 'section-title' }, title));
-
-  // helper to find direct "item-like" children (item, letitem, sditem)
-  function itemChildrenOf(el){
-    return Array.from(el.querySelectorAll(':scope > item, :scope > letitem, :scope > sditem'));
-  }
-
-  function buildItem(node) {
-    const li = create('li');
-
-    // collect children from direct item-like children and <subitems>
-    const direct = itemChildrenOf(node);
-    const subitemsContainer = node.querySelector(':scope > subitems');
-    const sub = subitemsContainer ? itemChildrenOf(subitemsContainer) : [];
-    const allChildren = direct.concat(sub);
-    const hasChildren = allChildren.length > 0;
-
-    // add toggle affordance (always present for consistent layout)
-    const toggle = create('span', { cls: 'toggle' }, hasChildren ? '\u25be' : ' ');
-    if(hasChildren) toggle.style.cursor = 'pointer';
-    li.appendChild(toggle);
-
-    // display name (handle <name ws="..."> and <name><str ws=...> patterns)
-    const nameNode = node.querySelector(':scope > name, :scope > Name');
-    const rawName = nameNode ? nameNode.textContent.trim() : (node.getAttribute && node.getAttribute('name')) || node.nodeName;
-    const abbrNode = node.querySelector(':scope > abbr, :scope > Abbreviation');
-    const abbrText = abbrNode ? abbrNode.textContent.trim() : (node.getAttribute && (node.getAttribute('abbr') || node.getAttribute('ws'))) || '';
-    const text = abbrText ? `${rawName} (${abbrText})` : rawName;
-    li.appendChild(document.createTextNode(text));
-
-    if (hasChildren) {
-      const ul = create('ul', { cls: 'tree' });
-      allChildren.forEach(ci => ul.appendChild(buildItem(ci)));
-      li.appendChild(ul);
-
-      toggle.addEventListener('click', () => {
-        li.classList.toggle('collapsed');
-        toggle.textContent = toggle.textContent === '\u25be' ? '\u25b8' : '\u25be';
-      });
-    }
-
-    return li;
-  }
-
-  // find top-level items: could be directly under list (item/letitem/sditem) or inside an <items> wrapper
-  let topItems = itemChildrenOf(root);
-  if(topItems.length === 0){
-    const itemsWrapper = root.querySelector(':scope > items');
-    if(itemsWrapper) topItems = itemChildrenOf(itemsWrapper);
-  }
-
-  const topUL = create('ul', { cls: 'tree' });
-  topItems.forEach(it => topUL.appendChild(buildItem(it)));
-  container.appendChild(topUL);
-
-  return container;
 }
 
 /* ===== Translated (multilingual) List view + Language Controls ===== */
@@ -2370,197 +2407,141 @@ function buildMultilingualInlineHTML(names, abbrs, visibleLangs){
   return html;
 }
 
-/* ===== Generic recursive fallback (unchanged) ===== */
-function renderGenericView(root){
-  const container = create('div');
-  container.appendChild(create('div', {cls:'section-title'}, 'Generic XML View'));
-  const rootUL = create('ul', {cls:'tree'});
-  rootUL.appendChild(build(root));
-  container.appendChild(rootUL);
-  return container;
-
-  function build(node){
-    const li = create('li');
-    const childElements = Array.from(node.childNodes).filter(n => n.nodeType === 1 || (n.nodeType === 3 && n.nodeValue.trim()));
-    const hasChildren = childElements.length > 0;
-    const toggle = create('span', {cls:'toggle'}, hasChildren ? '▾' : ' ');
-    if(hasChildren) toggle.style.cursor='pointer';
-    li.appendChild(toggle);
-
-    const labelText = node.nodeType === 1 ? node.nodeName : '';
-    const labelSpan = create('span');
-    if(globalState.showNames && node.nodeType === 1) labelSpan.textContent = labelText + ': ';
-    if(globalState.showNames && node.nodeType === 1) labelSpan.style.fontWeight = '600';
-    li.appendChild(labelSpan);
-
-    if(node.nodeType === 3){
-      li.appendChild(document.createTextNode(node.nodeValue.trim()));
-    } else {
-      const textChild = Array.from(node.childNodes).filter(n=>n.nodeType===3 && n.nodeValue.trim())[0];
-      if(textChild && childElements.every(n => n.nodeType === 3 || (n.nodeType === 1 && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3))){
-        li.appendChild(create('span', {}, textChild.nodeValue.trim()));
-      } else {
-        const subUL = create('ul', {cls:'tree'});
-        childElements.forEach(ch => subUL.appendChild(build(ch)));
-        li.appendChild(subUL);
-        if(hasChildren){
-          toggle.addEventListener('click', ()=> {
-            li.classList.toggle('collapsed');
-            toggle.textContent = toggle.textContent === '▾' ? '▸' : '▾';
-          });
-        }
+/* ===== Generic recursive fallback (XSL-based transformation) ===== */
+async function renderGenericView(root){
+  try {
+    // Create a temporary XML document with the root element
+    const tempDoc = document.implementation.createDocument(null, root.nodeName, null);
+    const importedRoot = tempDoc.importNode(root, true);
+    tempDoc.replaceChild(importedRoot, tempDoc.documentElement);
+    
+    // Load and apply XSL transformation
+    const xslDoc = await loadXSL('generic-to-html.xsl');
+    const showNames = globalState.showNames ? 'true' : 'false';
+    const result = await applyXSL(tempDoc, xslDoc, { showNames, styleId: 'generic' });
+    
+    // Add collapse/expand event listeners to toggle elements
+    const container = document.createElement('div');
+    container.appendChild(result);
+    
+    // Wire up toggle functionality
+    container.querySelectorAll('.toggle').forEach(toggle => {
+      const li = toggle.parentElement;
+      const ul = li.querySelector('ul.tree');
+      if(ul){
+        toggle.style.cursor = 'pointer';
+        toggle.addEventListener('click', () => {
+          li.classList.toggle('collapsed');
+          toggle.textContent = toggle.textContent === '▾' ? '▸' : '▾';
+        });
       }
-    }
-    if(node.nodeType === 1) li.setAttribute('data-gen-label', node.nodeName);
-    return li;
+    });
+    
+    return container;
+  } catch(err) {
+    console.error('Error rendering generic view with XSL:', err);
+    const errorDiv = create('div', {cls:'small-muted'}, 'Error rendering generic view: ' + err.message);
+    return errorDiv;
   }
 }
 
-/* ===== Phonology rendering (human-friendly) ===== */
-function renderPhonologyView(xmlDoc){
-  const root = xmlDoc.documentElement;
-  const container = create('div');
-  container.appendChild(create('div', {cls:'section-title'}, 'Phonology Summary'));
-  container.appendChild(create('div', {cls:'small-muted'}, `Version ${root.getAttribute('Version') || '—'} — DefaultVernWs: ${root.getAttribute('DefaultVernWs') || '—'}`));
-
-  // index phonemes
-  globalState.phonemeIndex = {};
-  const phonemes = Array.from(xmlDoc.getElementsByTagName('PhPhoneme') || []);
-  phonemes.forEach(p => {
-    const id = p.getAttribute('Id');
-    const symbol = pickAUni(p.querySelector(':scope > Name')) || '';
-    const desc = p.querySelector(':scope > Description Run')?.textContent?.trim() || '';
-    const codes = Array.from(p.querySelectorAll(':scope > Codes PhCode Representation AUni')).map(a => a.textContent.trim()).filter(Boolean);
-    globalState.phonemeIndex[id] = { id, symbol, desc, codes, node: p };
-  });
-
-  // phoneme sets / inventory
-  const sets = Array.from(xmlDoc.getElementsByTagName('PhPhonemeSet') || []);
-  sets.forEach(set => {
-    const setName = pickAUni(set.querySelector(':scope > Name')) || 'Phoneme Set';
-    const setDiv = create('div', {cls:'natclass'});
-    setDiv.appendChild(create('div', {cls:'section-title'}, setName));
-    const setDesc = set.querySelector(':scope > Description Run')?.textContent;
-    if(setDesc) setDiv.appendChild(create('div', {cls:'small-muted'}, setDesc));
-
-    const table = create('table', {cls:'phonemes'});
-    table.innerHTML = '<thead><tr><th>Symbol</th><th>Description</th><th>ID</th><th>Codes</th></tr></thead>';
-    const tbody = create('tbody');
-    const rows = Array.from(set.querySelectorAll(':scope > Phonemes PhPhoneme')) || phonemes;
-    rows.forEach(pnode => {
-      const pid = pnode.getAttribute('Id');
-      const data = globalState.phonemeIndex[pid] || {
-        id: pid,
-        symbol: pickAUni(pnode.querySelector(':scope > Name')) || '',
-        desc: pnode.querySelector(':scope > Description Run')?.textContent || '',
-        codes: Array.from(pnode.querySelectorAll(':scope > Codes PhCode Representation AUni')).map(a=>a.textContent.trim())
-      };
-      const row = create('tr', {id: 'phoneme-row-' + data.id});
-      const symbolCell = create('td');
-      const symBtn = create('span', {cls:'symbol-pill'}, data.symbol || '(no symbol)');
-      symBtn.style.cursor = 'pointer';
-      symBtn.addEventListener('click', ()=> onPhonemeSymbolClick(data.id));
-      symbolCell.appendChild(symBtn);
-      row.appendChild(symbolCell);
-      row.appendChild(create('td', {}, data.desc || ''));
-      row.appendChild(create('td', {}, data.id));
-      row.appendChild(create('td', {}, (data.codes && data.codes.join(', ')) || ''));
-      tbody.appendChild(row);
-      globalState.phonemeRowIds[data.id] = row.id;
+/* ===== Phonology rendering (XSL-based transformation) ===== */
+async function renderPhonologyView(xmlDoc){
+  try {
+    // Load and apply XSL transformation
+    const xslDoc = await loadXSL('phonology-to-html.xsl');
+    const result = await applyXSL(xmlDoc, xslDoc, { styleId: 'phonology' });
+    
+    const container = document.createElement('div');
+    container.appendChild(result);
+    
+    // Index phonemes for interactive features
+    globalState.phonemeIndex = {};
+    const phonemes = Array.from(xmlDoc.getElementsByTagName('PhPhoneme') || []);
+    phonemes.forEach(p => {
+      const id = p.getAttribute('Id');
+      const symbol = pickAUni(p.querySelector(':scope > Name')) || '';
+      const desc = p.querySelector(':scope > Description Run')?.textContent?.trim() || '';
+      const codes = Array.from(p.querySelectorAll(':scope > Codes PhCode Representation AUni')).map(a => a.textContent.trim()).filter(Boolean);
+      globalState.phonemeIndex[id] = { id, symbol, desc, codes, node: p };
+      globalState.phonemeRowIds[id] = 'phoneme-row-' + id;
     });
-    table.appendChild(tbody);
-    setDiv.appendChild(table);
-
-    // boundary markers
-    const bMarkers = Array.from(set.querySelectorAll(':scope > BoundaryMarkers PhBdryMarker')) || [];
-    if(bMarkers.length){
-      setDiv.appendChild(create('div', {cls:'section-title'}, 'Boundary Markers'));
-      const bmList = create('div', {cls:'small-muted'});
-      bMarkers.forEach(bm => {
-        const bmName = pickAUni(bm.querySelector(':scope > Name')) || bm.getAttribute('Id') || '';
-        const bmCodes = Array.from(bm.querySelectorAll(':scope > Codes PhCode Representation AUni')).map(a=>a.textContent.trim()).filter(Boolean);
-        bmList.appendChild(create('div', {}, `${bmName} ${ bmCodes.length ? '(' + bmCodes.join(', ') + ')' : ''}`));
-      });
-      setDiv.appendChild(bmList);
-    }
-
-    container.appendChild(setDiv);
-  });
-
-  // natural classes
-  const ncs = Array.from(xmlDoc.getElementsByTagName('PhNCSegments') || []);
-  if(ncs.length){
-    container.appendChild(create('div', {cls:'section-title'}, 'Natural Classes'));
+    
+    // Wire up phoneme symbol clicks
+    container.querySelectorAll('.symbol-pill').forEach(pill => {
+      const row = pill.closest('tr');
+      if(row && row.id){
+        const phonemeId = row.id.replace('phoneme-row-', '');
+        pill.style.cursor = 'pointer';
+        pill.addEventListener('click', ()=> onPhonemeSymbolClick(phonemeId));
+      }
+    });
+    
+    // Index natural classes for highlighting
+    globalState.idToNatclassIds = {};
+    globalState.natclassElements = {};
+    const ncs = Array.from(xmlDoc.getElementsByTagName('PhNCSegments') || []);
     ncs.forEach((nc, idx) => {
       const ncId = nc.getAttribute('Id') || ('nc-' + idx);
-      const name = pickAUni(nc.querySelector(':scope > Name')) || nc.getAttribute('Id') || 'Unnamed';
-      const abbr = pickAUni(nc.querySelector(':scope > Abbreviation')) || '';
-      const desc = nc.querySelector(':scope > Description Run')?.textContent || '';
-      const ncEl = create('div', {cls:'natclass', id: 'natclass-' + ncId});
-      const title = create('div', {cls:'section-title'}, name + (abbr ? (' (' + abbr + ')') : ''));
-      ncEl.appendChild(title);
-      if(desc) ncEl.appendChild(create('div', {cls:'small-muted'}, desc));
-      const segments = Array.from(nc.querySelectorAll(':scope > Segments')).map(s => s.getAttribute('dst')).filter(Boolean);
-      const membersDiv = create('div', {cls:'members'});
-      segments.forEach(sid => {
-        const phon = globalState.phonemeIndex[sid];
-        const text = phon ? (phon.symbol || phon.id) : sid;
-        const pill = create('span', {cls:'symbol-pill'}, text);
-        pill.addEventListener('click', ()=> {
-          if(globalState.phonemeRowIds[sid]) scrollToAndHighlight(globalState.phonemeRowIds[sid]);
-          else alert('Phoneme ID ' + sid + ' not found in phoneme index.');
+      const ncEl = container.querySelector('#natclass-' + ncId);
+      if(ncEl){
+        globalState.natclassElements['natclass-' + ncId] = ncEl;
+        const segments = Array.from(nc.querySelectorAll(':scope > Segments')).map(s => s.getAttribute('dst')).filter(Boolean);
+        segments.forEach(sid => {
+          if(!globalState.idToNatclassIds[sid]) globalState.idToNatclassIds[sid] = [];
+          globalState.idToNatclassIds[sid].push('natclass-' + ncId);
         });
-        membersDiv.appendChild(pill);
-        if(!globalState.idToNatclassIds[sid]) globalState.idToNatclassIds[sid] = [];
-        globalState.idToNatclassIds[sid].push(ncEl.id);
-      });
-      ncEl.appendChild(membersDiv);
-      container.appendChild(ncEl);
-      globalState.natclassElements[ncEl.id] = ncEl;
+        
+        // Wire up segment pills in natural classes
+        ncEl.querySelectorAll('.symbol-pill').forEach(pill => {
+          const phonemeId = pill.getAttribute('data-phoneme-id');
+          if(phonemeId){
+            pill.style.cursor = 'pointer';
+            pill.addEventListener('click', ()=> {
+              if(globalState.phonemeRowIds[phonemeId]) {
+                scrollToAndHighlight(globalState.phonemeRowIds[phonemeId]);
+              } else {
+                alert('Phoneme ID ' + phonemeId + ' not found in phoneme index.');
+              }
+            });
+            // Update pill text with symbol if available
+            const phon = globalState.phonemeIndex[phonemeId];
+            if(phon && phon.symbol) pill.textContent = phon.symbol;
+          }
+        });
+      }
     });
+    
+    // Wire up interactive behavior: clicking phoneme rows highlights natural classes
+    Object.keys(globalState.phonemeRowIds).forEach(pid => {
+      const rid = globalState.phonemeRowIds[pid];
+      const row = document.getElementById(rid);
+      if(row){
+        row.addEventListener('click', ()=> {
+          const natIds = globalState.idToNatclassIds[pid] || [];
+          Object.values(globalState.natclassElements).forEach(el=> el.style.boxShadow = '');
+          if(natIds.length){
+            natIds.forEach(nid => {
+              const el = globalState.natclassElements[nid];
+              if(el){
+                el.style.boxShadow = '0 0 0 3px rgba(11,110,219,0.08)';
+                el.scrollIntoView({behavior:'smooth', block:'center'});
+              }
+            });
+          } else {
+            row.classList.add('highlight');
+            setTimeout(()=> row.classList.remove('highlight'), 1200);
+          }
+        });
+      }
+    });
+    
+    return container;
+  } catch(err) {
+    console.error('Error rendering phonology view with XSL:', err);
+    const errorDiv = create('div', {cls:'small-muted'}, 'Error rendering phonology view: ' + err.message);
+    return errorDiv;
   }
-
-  // simple placeholders for Environments, Contexts, Rules
-  const envs = Array.from(xmlDoc.getElementsByTagName('Environments') || []);
-  envs.forEach(en => {
-    const sec = create('div', {cls:'natclass'});
-    sec.appendChild(create('div', {cls:'section-title'}, 'Environments'));
-    sec.appendChild(en.hasChildNodes() ? renderGenericView(en) : create('div', {cls:'small-muted'}, '(no environment definitions)'));
-    container.appendChild(sec);
-  });
-  const ctxs = Array.from(xmlDoc.getElementsByTagName('Contexts') || []);
-  ctxs.forEach(c => {
-    const sec = create('div', {cls:'natclass'});
-    sec.appendChild(create('div', {cls:'section-title'}, 'Contexts'));
-    sec.appendChild(c.hasChildNodes() ? renderGenericView(c) : create('div', {cls:'small-muted'}, '(no contexts defined)'));
-    container.appendChild(sec);
-  });
-
-  // interactive behavior: clicking phoneme rows highlights natural classes
-  Object.keys(globalState.phonemeRowIds).forEach(pid => {
-    const rid = globalState.phonemeRowIds[pid];
-    const row = document.getElementById(rid);
-    if(row){
-      row.addEventListener('click', ()=> {
-        const natIds = globalState.idToNatclassIds[pid] || [];
-        Object.values(globalState.natclassElements).forEach(el=> el.style.boxShadow = '');
-        if(natIds.length){
-          natIds.forEach(nid => {
-            const el = globalState.natclassElements[nid];
-            if(el){
-              el.style.boxShadow = '0 0 0 3px rgba(11,110,219,0.08)';
-              el.scrollIntoView({behavior:'smooth', block:'center'});
-            }
-          });
-        } else {
-          row.classList.add('highlight');
-          setTimeout(()=> row.classList.remove('highlight'), 1200);
-        }
-      });
-    }
-  });
-
-  return container;
 }
 
 /* ===== Wordforms export rendering (Card + Table + gloss language controls) ===== */
