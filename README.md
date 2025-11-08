@@ -162,3 +162,20 @@ Issues and pull requests are welcome:
 - Additional FLEx export types if feasible
 - Filtering, Sorting, Searching features
 - Export to other formats (Word, Excel, LaTeX, PDF)
+
+## Icons
+
+The app icon set (macOS `.icns`, Windows `.ico`, Linux `.png`) is generated from the single source file `assets/icon.svg`.
+
+Design goals: represent FieldWorks XML exports made human‑readable — angle brackets (XML), a document/page with lines (readability), and an outward arrow (share/export beyond FLEx).
+
+### Regenerating icons
+
+1. Edit `assets/icon.svg` (keep 1024×1024 canvas; center artwork; avoid embedded raster images or live text effects that may not scale well).
+2. Install dependencies if needed: `npm install`.
+3. Run `npm run icons` (macOS requires `iconutil` for the `.icns` build).
+4. Commit the updated `icon.svg`, generated `icon.icns`, `icon.ico`, and `icon.png`.
+
+The script cleans any legacy `icon-*.png` sizes and writes a canonical `assets/icon.png` (256×256) for Linux and Electron dev usage.
+
+If you change the file name, update `package.json` build config (`mac.icon`, `win.icon`, `linux.icon`) and `docs/index.html` favicon `<link>` tags.

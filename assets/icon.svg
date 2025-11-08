@@ -3,8 +3,10 @@
    width="1024"
    height="1024"
    viewBox="0 0 1024 1024"
+   role="img"
+   aria-label="FLEx XML Tools icon"
    version="1.1"
-   id="svg8"
+   id="svg13"
    sodipodi:docname="icon.svg"
    inkscape:version="1.4.2 (ebf0e940, 2025-05-08)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -12,7 +14,7 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
   <sodipodi:namedview
-     id="namedview8"
+     id="namedview13"
      pagecolor="#ffffff"
      bordercolor="#000000"
      borderopacity="0.25"
@@ -20,38 +22,19 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.38746881"
-     inkscape:cx="255.50444"
-     inkscape:cy="508.42802"
-     inkscape:window-width="1352"
-     inkscape:window-height="815"
-     inkscape:window-x="0"
-     inkscape:window-y="35"
+     inkscape:zoom="0.39940319"
+     inkscape:cx="300.44828"
+     inkscape:cy="416.87198"
+     inkscape:window-width="1152"
+     inkscape:window-height="698"
+     inkscape:window-x="205"
+     inkscape:window-y="31"
      inkscape:window-maximized="0"
-     inkscape:current-layer="svg8" />
-  <!-- Background -->
+     inkscape:current-layer="svg13" />
   <defs
-     id="defs2">
-    <rect
-       x="184.7769"
-       y="130.18372"
-       width="282.16709"
-       height="74.795128"
-       id="rect9" />
-    <inkscape:path-effect
-       effect="bspline"
-       id="path-effect9"
-       is_visible="true"
-       lpeversion="1.3"
-       weight="33.333333"
-       steps="2"
-       helper_size="0"
-       apply_no_weight="true"
-       apply_with_weight="true"
-       only_selected="false"
-       uniform="false" />
+     id="defs3">
     <linearGradient
-       id="g"
+       id="bg"
        x1="0"
        y1="0"
        x2="1"
@@ -65,161 +48,88 @@
          stop-color="#06b6d4"
          id="stop2" />
     </linearGradient>
-    <inkscape:path-effect
-       effect="bspline"
-       id="path-effect9-5"
-       is_visible="true"
-       lpeversion="1.3"
-       weight="33.333333"
-       steps="2"
-       helper_size="0"
-       apply_no_weight="true"
-       apply_with_weight="true"
-       only_selected="false"
-       uniform="false" />
-    <inkscape:path-effect
-       effect="bspline"
-       id="path-effect9-5-3"
-       is_visible="true"
-       lpeversion="1.3"
-       weight="33.333333"
-       steps="2"
-       helper_size="0"
-       apply_no_weight="true"
-       apply_with_weight="true"
-       only_selected="false"
-       uniform="false" />
-    <rect
-       x="184.7769"
-       y="130.18372"
-       width="239.59927"
-       height="73.376201"
-       id="rect9-6" />
-    <rect
-       x="184.7769"
-       y="130.18372"
-       width="282.16708"
-       height="74.795128"
-       id="rect9-5" />
-    <rect
-       x="184.7769"
-       y="130.18372"
-       width="239.59927"
-       height="73.376198"
-       id="rect9-6-9" />
-    <rect
-       x="184.7769"
-       y="130.18372"
-       width="239.59927"
-       height="73.376198"
-       id="rect9-6-9-7" />
+    <filter
+       id="soft"
+       x="-0.060255372"
+       y="-0.146875"
+       width="1.1205107"
+       height="1.3015625">
+      <feGaussianBlur
+         in="SourceAlpha"
+         stdDeviation="4"
+         result="blur"
+         id="feGaussianBlur2" />
+      <feOffset
+         dy="2"
+         result="off"
+         id="feOffset2" />
+      <feMerge
+         id="feMerge3">
+        <feMergeNode
+           in="off"
+           id="feMergeNode2" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode3" />
+      </feMerge>
+    </filter>
   </defs>
+  <!-- Rounded square background -->
   <rect
      x="64"
      y="64"
      width="896"
      height="896"
      rx="180"
-     fill="url(#g)"
-     id="rect2" />
-  <!-- Stacked "text lines" -->
+     fill="url(#bg)"
+     id="rect3" />
+  <!-- Angle brackets to evoke XML -->
   <g
      fill="none"
      stroke="#ffffff"
      stroke-linecap="round"
+     stroke-linejoin="round"
      stroke-width="56"
-     id="g5"
-     transform="translate(-940.31001,7.7872465)">
+     filter="url(#soft)"
+     id="g4"
+     transform="matrix(1.2103979,0,0,1.2103979,-107.72374,-85.400524)">
     <path
-       d="m 1074.4674,340 h 191.2613"
-       id="path2"
-       style="stroke-width:38.7232" />
+       d="m 292,384 -92,128 92,128"
+       id="path3" />
     <path
-       d="m 1368.9393,480 h 187.9211"
-       id="path3"
-       style="stroke-width:42.9142" />
-    <path
-       d="m 1697.3852,477.55893 h 75.6179"
-       id="path3-4"
-       style="stroke-width:45.022;stroke-dasharray:none" />
-    <path
-       d="m 1359.4036,620 h 215.9408"
-       id="path4"
-       style="stroke-width:38.3686" />
-    <path
-       d="m 1357.4349,760 h 227.481"
-       id="path5"
-       style="stroke-width:45.8059" />
+       d="m 732,384 92,128 -92,128"
+       id="path4" />
   </g>
-  <!-- Bracket-like linking arcs suggesting discourse structure -->
+  <!-- Page/document with readable lines (data made human-friendly) -->
   <g
      fill="none"
      stroke="#ffffff"
-     stroke-width="52"
      stroke-linecap="round"
-     id="g8"
-     transform="rotate(180,520.81988,616.31689)">
+     stroke-linejoin="round"
+     stroke-width="36"
+     id="g10"
+     transform="matrix(0.89166528,0,0,0.89166528,55.250705,57.634068)">
+    <!-- page body -->
     <path
-       d="m 720,460 c 180,0 180,280 0,280"
+       d="m 360,300 h 230 l 110,110 v 314 a 40,40 0 0 1 -40,40 H 360 A 40,40 0 0 1 320,724 V 340 a 40,40 0 0 1 40,-40 z"
+       id="path5" />
+    <!-- folded corner -->
+    <path
+       d="M 590,300 V 410 H 700"
+       id="path6" />
+    <!-- readable lines -->
+    <path
+       d="M 392,460 H 628"
        id="path7" />
     <path
-       d="m 720,600 c 100,0 100,160 0,160"
+       d="M 392,520 H 628"
        id="path8" />
+    <path
+       d="M 392,580 H 628"
+       id="path9" />
+    <path
+       d="M 392,640 H 560"
+       id="path10" />
   </g>
-  <path
-     style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:10;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-     d="m 165.47899,247.24508 c 227.46179,-1.1462 454.92357,-2.29239 682.38536,-3.43859"
-     id="path9"
-     inkscape:path-effect="#path-effect9"
-     inkscape:original-d="m 165.47899,247.24508 c 227.46179,-1.1462 454.92357,-2.2924 682.38536,-3.43859"
-     transform="matrix(1.1680451,0,0,1.1680451,-76.645478,-39.138688)" />
-  <path
-     style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:10;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-     d="m 165.47899,247.24508 c 227.46179,-1.1462 454.92357,-2.29239 682.38536,-3.43859"
-     id="path9-2"
-     inkscape:path-effect="#path-effect9-5"
-     inkscape:original-d="m 165.47899,247.24508 c 227.46179,-1.1462 454.92357,-2.2924 682.38536,-3.43859"
-     transform="matrix(0,1.184078,-0.89883447,0,585.68963,-92.087855)"
-     sodipodi:nodetypes="cc" />
-  <path
-     style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:10;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-     d="m 165.47899,247.24508 c 227.46179,-1.1462 454.92357,-2.29239 682.38536,-3.43859"
-     id="path9-2-8"
-     inkscape:path-effect="#path-effect9-5-3"
-     inkscape:original-d="m 165.47899,247.24508 c 227.46179,-1.1462 454.92357,-2.2924 682.38536,-3.43859"
-     transform="matrix(0,1.184078,-0.89883447,0,920.31778,-92.0589)"
-     sodipodi:nodetypes="cc" />
-  <text
-     xml:space="preserve"
-     id="text9"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:64px;font-family:Andika;-inkscape-font-specification:Andika;text-align:center;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect9);fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:10;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-     transform="translate(-93.649159,25.54068)" />
-  <text
-     xml:space="preserve"
-     id="text9-7"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:64px;font-family:Andika;-inkscape-font-specification:Andika;text-align:center;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect9-6);fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:10;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-     transform="matrix(1.2764636,0,0,1.2764636,122.72165,-16.548295)"><tspan
-       x="205.90527"
-       y="186.66844"
-       id="tspan2">Clause</tspan></text>
-  <text
-     xml:space="preserve"
-     id="text9-7-0"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:64px;font-family:Andika;-inkscape-font-specification:Andika;text-align:end;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect9-6-9);fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:10;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-     transform="matrix(1.2764636,0,0,1.2764636,-272.53431,-14.03811)"
-     x="45.625"
-     y="0"><tspan
-       x="325.00195"
-       y="186.66844"
-       id="tspan3">Pre</tspan></text>
-  <text
-     xml:space="preserve"
-     id="text9-7-0-3"
-     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:64px;font-family:Andika;-inkscape-font-specification:Andika;text-align:start;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect9-6-9-7);fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:10;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
-     transform="matrix(1.2764636,0,0,1.2764636,483.42101,-15.422446)"
-     x="-60.46875"
-     y="0"><tspan
-       x="184.77734"
-       y="186.66844"
-       id="tspan4">Post</tspan></text>
+  <!-- Share/export arrow (out of the document) -->
 </svg>

@@ -18,6 +18,7 @@ const ICON_SVG = path.join(ASSETS, 'icon.svg');
 const ICONSET_DIR = path.join(ASSETS, 'app.iconset');
 const ICON_ICNS = path.join(ASSETS, 'icon.icns');
 const ICON_ICO = path.join(ASSETS, 'icon.ico');
+const ICON_PNG = path.join(ASSETS, 'icon.png');
 
 async function ensureSharp(){
   try{
@@ -38,9 +39,11 @@ async function renderPngs(sharpLib){
     const base = path.join(ICONSET_DIR, `icon_${size}x${size}.png`);
     const scale2 = path.join(ICONSET_DIR, `icon_${size}x${size}@2x.png`);
     const img = sharpLib(ICON_SVG);
-    await img.resize(size, size).png().toFile(base);
-    await img.resize(size*2, size*2).png().toFile(scale2);
+    await img.resize(size, size, { fit:'contain' }).png().toFile(base);
+    await img.resize(size*2, size*2, { fit:'contain' }).png().toFile(scale2);
   }
+  // Also emit a top-level PNG for Linux and dev BrowserWindow (256px)
+  await sharpLib(ICON_SVG).resize(256, 256, { fit:'contain' }).png().toFile(ICON_PNG);
 }
 
 async function buildIcns(){
@@ -76,6 +79,19 @@ async function main(){
   try{
     await rimraf(ICONSET_DIR);
     await mkdirp(ASSETS);
+    // Clean older one-off PNG sizes to "start from scratch"
+    const stale = await fs.readdir(ASSETS);
+    await Promise.all(
+      stale
+        .filter(f=> /^icon-(16|32|48|64|128|256)\.png$/i.test(f))
+        .map(f=> fs.rm(path.join(ASSETS, f)).catch(()=>{}))
+    );
+    // Remove previous outputs so builder can't pick stale files
+    await Promise.all([
+      fs.rm(ICON_ICNS, { force:true }).catch(()=>{}),
+      fs.rm(ICON_ICO, { force:true }).catch(()=>{}),
+      fs.rm(ICON_PNG, { force:true }).catch(()=>{})
+    ]);
     await renderPngs(sharp);
     await buildIcns();
     await buildIco(sharp);
