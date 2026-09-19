@@ -38,6 +38,13 @@ jobs:
             src: "Dropbox/Partnership Development/Podcasts/2024/S2E10 Why So Many Languages/S2E11 Why so many languages.mp4"
           - key: S03E01-youre-not-alone
             src: "Dropbox/Partnership Development/Podcasts/2025/There is a way.../S3E01You're Not Alone.mp4"
+          # Already low-bitrate sources: remux only, re-encoding would inflate them
+          - key: S01E10-here-i-raise-mine-ebenezer
+            src: "Dropbox/Partnership Development/Podcasts/2022/2022-09-11_Ebenezer/11 Here I raise mine Ebenezer....mp4"
+            mode: remux
+          - key: S01E06-i-will-be-safe
+            src: "Dropbox/Partnership Development/Podcasts/2021/06 I Will Be Safe/Auphonic Results/I_Will_Be_Safe_2021-06.mp4"
+            mode: remux
 
     steps:
       - name: Skip if filtered out
@@ -86,17 +93,24 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: ffprobe -v error -show_entries format=duration -show_entries stream=codec_type,width,height,bit_rate -of default=nw=1 /mnt/work/in.mp4
 
-      - name: Encode to delivery MP4 (faststart)
+      - name: Encode or remux to delivery MP4 (faststart)
         if: steps.gate.outputs.run == 'true'
         run: |
           set -euo pipefail
-          time ffmpeg -y -v warning -stats -i /mnt/work/in.mp4 \
-            -c:v libx264 -preset veryfast -b:v 2500k -maxrate 3000k -bufsize 6000k \
-            -pix_fmt yuv420p -tag:v avc1 \
-            -c:a aac -b:a 128k -ar 44100 \
-            -movflags +faststart \
-            /mnt/work/out.mp4
-          ls -l /mnt/work/out.mp4
+          if [ "${{ matrix.mode }}" = "remux" ]; then
+            echo "remux mode: copying streams, faststart only"
+            time ffmpeg -y -v warning -stats -i /mnt/work/in.mp4 \
+              -map 0:v:0 -map 0:a:0 -c copy -movflags +faststart \
+              /mnt/work/out.mp4
+          else
+            time ffmpeg -y -v warning -stats -i /mnt/work/in.mp4 \
+              -c:v libx264 -preset veryfast -b:v 2500k -maxrate 3000k -bufsize 6000k \
+              -pix_fmt yuv420p -tag:v avc1 \
+              -c:a aac -b:a 128k -ar 44100 \
+              -movflags +faststart \
+              /mnt/work/out.mp4
+          fi
+          ls -l /mnt/work/in.mp4 /mnt/work/out.mp4
 
       - name: Verify faststart and duration
         if: steps.gate.outputs.run == 'true'
