@@ -36,6 +36,8 @@ jobs:
             src: "Dropbox/Partnership Development/Podcasts/2024/S2E8 Interview with Cory Freeman/S2E8 Interview with Cory Freeman.mp4"
           - key: S02E11-why-so-many-languages
             src: "Dropbox/Partnership Development/Podcasts/2024/S2E10 Why So Many Languages/S2E11 Why so many languages.mp4"
+          - key: S03E01-youre-not-alone
+            src: "Dropbox/Partnership Development/Podcasts/2025/There is a way.../S3E01You're Not Alone.mp4"
 
     steps:
       - name: Skip if filtered out
